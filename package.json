@@ -1,0 +1,28 @@
+{
+  "name": "accordmesh",
+  "version": "0.1.0-alpha.1",
+  "private": true,
+  "license": "Apache-2.0",
+  "packageManager": "pnpm@9.15.0",
+  "scripts": {
+    "dev": "pnpm --dir apps/desktop dev",
+    "build": "pnpm --dir apps/desktop build",
+    "tauri": "pnpm --dir apps/desktop tauri",
+    "i18n:validate": "node tools/validate-i18n.mjs",
+    "check": "pnpm i18n:validate && pnpm build && node tools/audit-public-release.mjs",
+    "test:native": "cargo test --locked --manifest-path apps/desktop/src-tauri/Cargo.toml"
+  },
+  "devDependencies": {
+    "@tauri-apps/cli": "^2.2.7",
+    "typescript": "^5.7.3"
+  },
+  "pnpm": {
+    "onlyBuiltDependencies": [
+      "esbuild"
+    ]
+  },
+  "description": "Local-first, provider-neutral desktop assistant for chronological meeting understanding.",
+  "engines": {
+    "node": ">=20"
+  }
+}

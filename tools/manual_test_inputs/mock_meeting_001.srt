@@ -1,0 +1,19 @@
+1
+00:00:00,000 --> 00:00:06,000
+The pilot may start on July 15 if the security review is approved by July 10.
+
+2
+00:00:06,500 --> 00:00:12,000
+No public launch date was committed during this meeting.
+
+3
+00:00:12,500 --> 00:00:18,000
+The order of the legal and security reviews is still unresolved.
+
+4
+00:00:18,500 --> 00:00:25,000
+The team agreed to prepare a draft checklist, but no owner was assigned.
+
+5
+00:00:25,500 --> 00:00:32,000
+A follow-up meeting was suggested for next week, but no exact date was set.

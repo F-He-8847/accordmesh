@@ -1,0 +1,17 @@
+{
+  "id": "default-cross-cultural-meeting",
+  "segments": [
+    "We need to confirm the launch date before promising the client a delivery window.",
+    "The budget is acceptable if the translation review stays inside the current scope.",
+    "Please ask whether the legal review is required before or after the pilot."
+  ],
+  "expectedArtifacts": [
+    "literal_translation",
+    "segment_understanding",
+    "meeting_context_snapshot",
+    "post_meeting_analysis",
+    "communication_review",
+    "intelligent_comparison_report",
+    "meeting_minutes"
+  ]
+}

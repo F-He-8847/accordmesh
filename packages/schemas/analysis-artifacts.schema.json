@@ -1,0 +1,66 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:accordmesh:schema:analysis-artifacts:v1",
+  "title": "AccordMesh Analysis Artifact Envelope",
+  "type": "object",
+  "required": [
+    "id",
+    "projectId",
+    "artifactType",
+    "sourceIds",
+    "schemaVersion",
+    "promptVersion",
+    "providerId",
+    "modelId",
+    "appVersion",
+    "createdAt",
+    "status",
+    "payload"
+  ],
+  "properties": {
+    "id": {
+      "type": "string"
+    },
+    "projectId": {
+      "type": "string"
+    },
+    "artifactType": {
+      "type": "string"
+    },
+    "sourceIds": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "schemaVersion": {
+      "type": "string"
+    },
+    "promptVersion": {
+      "type": "string"
+    },
+    "providerId": {
+      "type": "string"
+    },
+    "modelId": {
+      "type": "string"
+    },
+    "appVersion": {
+      "type": "string"
+    },
+    "createdAt": {
+      "type": "string"
+    },
+    "status": {
+      "enum": [
+        "queued",
+        "running",
+        "completed",
+        "failed"
+      ]
+    },
+    "payload": {
+      "type": "object"
+    }
+  }
+}

@@ -1,0 +1,59 @@
+# JavaScript and frontend output
+node_modules/
+.pnpm-store/
+dist/
+build/
+coverage/
+*.tsbuildinfo
+apps/desktop/vite.config.js
+apps/desktop/vite.config.d.ts
+
+# Rust and Tauri output
+target/
+apps/desktop/src-tauri/binaries/
+
+# Environment files and credentials
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.p12
+*.pfx
+*.mobileprovision
+*.cer
+*.crt
+
+# Runtime databases, vaults, and temporary data
+*.sqlite
+*.sqlite3
+*.db
+*.db-wal
+*.db-shm
+*.db-journal
+*.log
+*.dmp
+*.core
+
+# Meeting media and generated exports
+*.wav
+*.mp3
+*.m4a
+*.aac
+*.flac
+*.mp4
+*.mov
+*.mkv
+*.webm
+
+# Generated validation or audit output
+tools/generated_validation/
+tools/generated_results/
+.generated/
+
+# Editor and operating-system files
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+*.swp

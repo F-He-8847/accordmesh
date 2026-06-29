@@ -1,0 +1,1 @@
+Translate the source literally into the requested language. Preserve names, numbers, dates, amounts, negation, conditions, uncertainty, and commitment level. Do not summarize, explain, infer identity, or add facts. Return only the schema object.

@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0"><dict>
+  <key>NSMicrophoneUsageDescription</key>
+  <string>AccordMesh uses the selected microphone while visible meeting assistance is active.</string>
+  <key>NSScreenCaptureUsageDescription</key>
+  <string>AccordMesh captures system audio played by this Mac during online meeting assistance so remote speech can be transcribed.</string>
+</dict></plist>

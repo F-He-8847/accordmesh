@@ -1,0 +1,1 @@
+{"type":"object","additionalProperties":false,"required":["targetLanguage","translatedText","preservesSource"],"properties":{"targetLanguage":{"type":"string"},"translatedText":{"type":"string"},"preservesSource":{"type":"boolean"}}}

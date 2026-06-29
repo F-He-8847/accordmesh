@@ -1,0 +1,71 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:accordmesh:schema:provider-capabilities:v1",
+  "title": "AccordMesh Provider Capabilities",
+  "type": "object",
+  "required": [
+    "fileTranscription",
+    "realtimeTranscription",
+    "textTranslation",
+    "segmentUnderstanding",
+    "meetingSynthesis",
+    "comparisonReport",
+    "meetingMinutes",
+    "supportsStreaming",
+    "supportsStructuredOutput",
+    "supportsLanguageAutoDetection"
+  ],
+  "properties": {
+    "fileTranscription": {
+      "type": "boolean"
+    },
+    "realtimeTranscription": {
+      "type": "boolean"
+    },
+    "textTranslation": {
+      "type": "boolean"
+    },
+    "segmentUnderstanding": {
+      "type": "boolean"
+    },
+    "meetingSynthesis": {
+      "type": "boolean"
+    },
+    "comparisonReport": {
+      "type": "boolean"
+    },
+    "meetingMinutes": {
+      "type": "boolean"
+    },
+    "supportsStreaming": {
+      "type": "boolean"
+    },
+    "supportsStructuredOutput": {
+      "type": "boolean"
+    },
+    "supportsLanguageAutoDetection": {
+      "type": "boolean"
+    },
+    "supportsCodeSwitching": {
+      "type": "boolean"
+    },
+    "supportedInputFormats": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "supportedSourceLanguages": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "supportedTargetLanguages": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    }
+  }
+}
