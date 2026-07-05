@@ -4,10 +4,15 @@ use crate::storage::repository::Repository;
 
 use super::mock::MockProvider;
 use super::openai::{self, OpenAiProvider};
+use super::test_adapter;
 use super::{Provider, ProviderCapabilities, ProviderDefinition};
 
 pub fn definitions() -> Vec<ProviderDefinition> {
-    vec![MockProvider::definition(), openai::definition()]
+    vec![
+        openai::definition(),
+        MockProvider::definition(),
+        test_adapter::definition(),
+    ]
 }
 
 pub const SUPPORTED_LANGUAGE_CODES: &[&str] = &[
@@ -80,6 +85,7 @@ pub fn resolve(
                 .ok_or("ERR_PROVIDER_NOT_CONFIGURED")?;
             Ok(Arc::new(OpenAiProvider::from_configuration(config)?))
         }
+        test_adapter::ID => Err(test_adapter::UI_ONLY_ERROR),
         _ => Err("ERR_PROVIDER_NOT_FOUND"),
     }
 }
@@ -110,6 +116,7 @@ pub fn validate_configuration(
             }
         }
         "openai" => openai::validate_configuration(value),
+        test_adapter::ID => test_adapter::validate_configuration(value),
         _ => Err("ERR_PROVIDER_NOT_FOUND"),
     }
 }

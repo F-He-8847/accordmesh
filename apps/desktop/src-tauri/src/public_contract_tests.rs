@@ -24,8 +24,9 @@ use crate::providers::registry::{
 use crate::providers::Provider;
 use crate::storage::repository::Repository;
 use crate::{
-    require_attachment_media, require_single_upload_file_count, setup_status_from_state,
-    validate_minutes_source_artifacts, validate_regeneration_request_id, AppCoreState, AppError,
+    normalized_project_title, require_attachment_media, require_single_upload_file_count,
+    setup_status_from_state, validate_minutes_source_artifacts, validate_regeneration_request_id,
+    AppCoreState, AppError, PROJECT_TITLE_MAX_CHARS,
 };
 
 struct ScopedDir(PathBuf);
@@ -475,4 +476,96 @@ fn bundled_json_schemas_are_valid_and_use_stable_urn_identifiers() {
             assert!(id.starts_with("urn:accordmesh:schema:"));
         }
     }
+}
+
+#[test]
+fn project_title_contract_counts_unicode_without_silent_truncation() {
+    let exact = "界".repeat(PROJECT_TITLE_MAX_CHARS);
+    assert_eq!(
+        normalized_project_title(Some(&exact)).expect("exact limit is accepted"),
+        exact
+    );
+
+    let too_long = "界".repeat(PROJECT_TITLE_MAX_CHARS + 1);
+    assert!(matches!(
+        normalized_project_title(Some(&too_long)),
+        Err(AppError::Stable("ERR_TITLE_TOO_LONG"))
+    ));
+    assert_eq!(
+        normalized_project_title(Some("  Clear title  ")).expect("title is normalized"),
+        "Clear title"
+    );
+}
+
+#[tokio::test]
+async fn failed_upload_media_reaches_a_terminal_visible_status() {
+    let dir = ScopedDir::new("media-terminal-state");
+    let repository = Repository::new(dir.0.join("app-data")).expect("create repository");
+    repository.initialize().expect("initialize repository");
+    let master = crypto::random_key();
+    let project = repository
+        .create_project(
+            "Attachment terminal state",
+            ProjectOrigin::RealtimeInPerson,
+            ProjectStatus::Completed,
+            &master,
+        )
+        .expect("create project");
+    let project_key = repository
+        .project_key(&project.id, &master)
+        .expect("unwrap project key");
+    let job_id = repository
+        .queue_job(&project.id, None, "upload", 0, &json!({}))
+        .expect("queue upload job");
+    let queued_file_id = "queued-file-1";
+    let source = dir.0.join("fictional-audio.wav");
+    fs::write(&source, b"fictional encrypted media payload").expect("write media source");
+
+    let imported = repository
+        .import_media_asset(
+            &project.id,
+            &job_id,
+            queued_file_id,
+            "fictional-audio.wav",
+            MediaKind::Audio,
+            Some("audio/wav".into()),
+            &source,
+            &project_key,
+        )
+        .await
+        .expect("import managed media");
+    assert_eq!(imported.processing_status, "processing");
+
+    assert_eq!(
+        repository
+            .finalize_incomplete_media_for_job(&job_id, "attached")
+            .expect("finalize incomplete media"),
+        1
+    );
+    let visible = repository
+        .media_for_job(&job_id, queued_file_id)
+        .expect("read media state")
+        .expect("media exists");
+    assert_eq!(visible.processing_status, "attached");
+    assert_eq!(
+        repository
+            .finalize_incomplete_media_for_job(&job_id, "failed")
+            .expect("terminal status remains stable"),
+        0
+    );
+}
+
+#[test]
+fn export_safe_name_preserves_unicode_meeting_titles() {
+    let title = "会议Alpha日文テストEnglish记录議事録Review確認同步Export文件名保存验证";
+    let safe = export::safe_name(title);
+    assert!(safe.contains("会议Alpha日文テストEnglish记录議事録Review確認"));
+    assert!(!safe.starts_with('_'));
+    assert!(!safe.chars().all(|character| character == '_'));
+}
+
+#[test]
+fn export_safe_name_replaces_only_unsafe_filename_characters() {
+    let safe = export::safe_name("客户会议/Legal:Review?確認|Minutes");
+    assert_eq!(safe, "客户会议_Legal_Review_確認_Minutes");
 }

@@ -1,0 +1,7 @@
+format_version=1
+ffmpeg_version=8.1.2
+target=aarch64-apple-darwin
+minimum_macos=13.0
+license=LGPL-2.1-or-later
+ffmpeg_sha256=30b1059d8c815fda3fa53a5c3b381bbe3f4aa45c937050a91cb14f6dbd333590
+ffprobe_sha256=79aec0322c537e2b240fe4ce9db4e3bf29b06ee43cd72913ad0c4b7c505720fb

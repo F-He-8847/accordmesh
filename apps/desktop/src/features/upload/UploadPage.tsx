@@ -1,5 +1,6 @@
 import { FormEvent, useEffect, useMemo, useState } from "react";
 import { api } from "../../shared/api";
+import { Icon } from "../../components/Icon";
 import type {
   LanguagePreferences,
   MeetingProject,
@@ -9,6 +10,10 @@ import type {
   SelectedFile,
 } from "../../shared/types";
 import { t } from "../../i18n";
+import {
+  PROJECT_TITLE_MAX_CHARS,
+  projectTitleLength,
+} from "../../shared/projectTitle";
 import {
   providerLanguageCompatibility,
   resolveLanguagePreferences,
@@ -117,6 +122,10 @@ export function UploadPage({
 
   async function submit(event: FormEvent) {
     event.preventDefault();
+    if (mode === "new" && projectTitleLength(title) > PROJECT_TITLE_MAX_CHARS) {
+      onError("ERR_TITLE_TOO_LONG");
+      return;
+    }
     if (!file) {
       onError("ERR_SINGLE_FILE_REQUIRED");
       return;
@@ -164,6 +173,8 @@ export function UploadPage({
     }
   }
 
+  const titleLength = projectTitleLength(title);
+  const titleOverLimit = titleLength > PROJECT_TITLE_MAX_CHARS;
   const supported =
     !file ||
     Boolean(
@@ -178,6 +189,7 @@ export function UploadPage({
     configured &&
     supported &&
     languageCompatibility.supported &&
+    !titleOverLimit &&
     (mode === "new" ||
       (isRecordingSelection(file) &&
         attachableProjects.some((project) => project.id === selectedProject))) &&
@@ -217,8 +229,17 @@ export function UploadPage({
             {t("realtime.projectTitle")}
             <input
               value={title}
+              aria-invalid={titleOverLimit}
               onChange={(event) => setTitle(event.target.value)}
+              required
             />
+            <small className={`characterCount ${titleOverLimit ? "isOverLimit" : ""}`}>
+              {t("upload.titleCharacterCount", {
+                count: titleLength,
+                max: PROJECT_TITLE_MAX_CHARS,
+              })}
+            </small>
+            {titleOverLimit && <small className="fieldError">{t("errors.ERR_TITLE_TOO_LONG")}</small>}
           </label>
         ) : (
           <label>
@@ -266,35 +287,42 @@ export function UploadPage({
           <div className="notice error">{t("upload.recordingFileOnly")}</div>
         )}
         <div className="filePicker">
-          <button type="button" className="secondaryButton" onClick={choose}>
-            {t(
-              mode === "attach"
-                ? file
-                  ? "upload.replaceRecording"
-                  : "upload.chooseRecording"
-                : file
-                  ? "upload.replaceFile"
-                  : "upload.chooseFile",
-            )}
-          </button>
           {!file ? (
-            <div className="emptyState">{t("upload.noFile")}</div>
+            <button type="button" className="fileSelectionCard" onClick={choose}>
+              <span className="fileSelectionIcon"><Icon name="upload" size={24}/></span>
+              <span className="fileSelectionCopy">
+                <strong>
+                  {t(mode === "attach" ? "upload.chooseRecording" : "upload.chooseFile")}
+                </strong>
+                <small>
+                  {t(mode === "attach" ? "upload.recordingPickerHint" : "upload.filePickerHint")}
+                </small>
+              </span>
+              <span className="secondaryButton fileSelectionAction">
+                {t("upload.browseFiles")}
+              </span>
+            </button>
           ) : (
-            <div className="listPanel">
-              <div className="rowItem">
-                <div>
-                  <strong>{file.originalFileName}</strong>
-                  <span>
-                    {t(
-                      `upload.kind${file.kind[0].toUpperCase()}${file.kind.slice(1)}`,
-                    )}{" "}
-                    · {formatBytes(file.size)}
-                  </span>
+            <div className="selectedFilePanel">
+              <div className="listPanel">
+                <div className="rowItem">
+                  <div>
+                    <strong>{file.originalFileName}</strong>
+                    <span>
+                      {t(
+                        `upload.kind${file.kind[0].toUpperCase()}${file.kind.slice(1)}`,
+                      )}{" "}
+                      · {formatBytes(file.size)}
+                    </span>
+                  </div>
+                  <button type="button" onClick={() => setFile(null)}>
+                    {t("common.remove")}
+                  </button>
                 </div>
-                <button type="button" onClick={() => setFile(null)}>
-                  {t("common.remove")}
-                </button>
               </div>
+              <button type="button" className="secondaryButton" onClick={choose}>
+                {t(mode === "attach" ? "upload.replaceRecording" : "upload.replaceFile")}
+              </button>
             </div>
           )}
         </div>

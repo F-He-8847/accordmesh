@@ -125,25 +125,38 @@ pub(crate) async fn write_for_test(path: &Path, bytes: &[u8]) -> Result<(), &'st
     write(path, bytes).await
 }
 
-fn safe_name(value: &str) -> String {
-    let name = value
-        .chars()
-        .map(|character| {
-            if character.is_ascii_alphanumeric()
-                || character == '-'
-                || character == '_'
-                || character == ' '
-            {
-                character
-            } else {
-                '_'
+pub(crate) fn safe_name(value: &str) -> String {
+    let mut output = String::new();
+    let mut previous_separator = false;
+    for character in value.trim().chars() {
+        let replacement = if character.is_control()
+            || matches!(
+                character,
+                '/' | '\\' | ':' | '*' | '?' | '"' | '<' | '>' | '|'
+            ) {
+            Some('_')
+        } else {
+            None
+        };
+        let next = replacement.unwrap_or(character);
+        if next == '_' {
+            if previous_separator {
+                continue;
             }
-        })
-        .collect::<String>();
-    if name.trim().is_empty() {
+            previous_separator = true;
+        } else {
+            previous_separator = false;
+        }
+        output.push(next);
+        if output.chars().count() >= 96 {
+            break;
+        }
+    }
+    let name = output.trim().trim_matches('_').trim().to_owned();
+    if name.is_empty() {
         "accordmesh-meeting".into()
     } else {
-        name.trim().into()
+        name
     }
 }
 

@@ -61,5 +61,8 @@
   "requestSystemAudioPermission": "Request permission",
   "openSystemSettings": "Open System Settings",
   "checkAgain": "Check again",
-  "mockSystemAudioBypass": "MockProvider uses scripted remote audio, so system-audio permission is not needed for this test."
+  "mockSystemAudioBypass": "MockProvider uses scripted remote audio, so system-audio permission is not needed for this test.",
+  "titleCharacterCount": "{{count}} / {{max}} characters",
+  "cancelSoundCheck": "Cancel sound check",
+  "cancellingSoundCheck": "Cancelling…"
 }

@@ -1270,15 +1270,23 @@ fn finalize_upload_failure(
         let attachment = serde_json::from_value::<UploadJobPayload>(value)
             .map(|payload| payload.attach_to_existing)
             .unwrap_or(false);
-        repo.set_project_status(
-            &project_id,
-            if attachment {
-                ProjectStatus::Completed
-            } else {
-                ProjectStatus::Failed
-            },
+        repo.finalize_incomplete_media_for_job(
+            job_id,
+            if attachment { "attached" } else { "failed" },
         )
         .ok();
+        let next_project_status = if attachment {
+            ProjectStatus::Completed
+        } else {
+            ProjectStatus::Failed
+        };
+        repo.set_project_status(&project_id, next_project_status.clone())
+            .ok();
+        emit_optional(
+            app,
+            "accordmesh://project-status",
+            json!({"projectId":project_id,"status":match next_project_status { ProjectStatus::Completed => "completed", ProjectStatus::Failed => "failed", ProjectStatus::Active => "active", ProjectStatus::Processing => "processing" }}),
+        );
     }
     emit_optional(
         app,

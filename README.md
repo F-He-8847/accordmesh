@@ -39,8 +39,29 @@ AccordMesh uses a BYOK (bring your own key) model. Users configure their own pro
 
 The architecture is provider-neutral. The current source contains:
 
-- `MockProvider`, for deterministic offline development and tests;
-- `OpenAIProvider`, behind the common provider interfaces.
+- `OpenAIProvider`, behind the common provider interfaces;
+- `MockProvider`, for deterministic offline development, automated tests, manual QA, community contribution workflows, and API-token cost control;
+- `Test Provider Adapter`, a Developer-diagnostics-only UI extension test adapter that verifies provider registration, task model display, and capability rendering without processing meetings.
+
+`MockProvider` is not a production AI provider. It does not call external AI services and is hidden from normal public release UI by default. Community developers can explicitly enable Developer diagnostics and the MockProvider UI with:
+
+```bash
+VITE_ACCORDMESH_ENABLE_DEV_TOOLS=1 pnpm tauri dev
+```
+
+Diagnostic builds can also be created explicitly with:
+
+```bash
+VITE_ACCORDMESH_ENABLE_DEV_TOOLS=1 pnpm tauri build
+```
+
+Normal public DMG builds should be created without this flag so that MockProvider, Test Provider Adapter, Mock scenario, and other testing controls are not shown to end users.
+
+### Adding a Provider Adapter
+
+AccordMesh's AI Provider UI is registry-driven. New providers should be added by defining a Provider Adapter rather than hardcoding labels or task-model rows in the Settings page.
+
+A Provider Adapter should declare its display name, capabilities, task-model mapping, settings requirements, runtime behavior, validation, and error mapping. The Test Provider Adapter is included only in Developer diagnostics mode to verify that provider registration, task model display, and capability rendering work as expected. It fails closed with `ERR_TEST_PROVIDER_ADAPTER_UI_ONLY` and does not process meetings.
 
 The OpenAI implementation and offline request/response contract tests are present. **Live OpenAI API smoke testing remains pending maintainer API access.** No real API key is included in this repository.
 
@@ -54,7 +75,7 @@ See [Known Limitations](docs/KNOWN_LIMITATIONS.md) and [Validation Status](docs/
 
 ## Build from source
 
-Prerequisites include Node.js 20 or newer, pnpm 9, the stable Rust toolchain, Tauri 2 platform prerequisites, and FFmpeg/FFprobe for uploaded media processing. macOS development also requires Xcode command-line tools and the relevant microphone and screen/system-audio permissions.
+Prerequisites include Node.js 20 or newer, pnpm 9, the stable Rust toolchain, Tauri 2 platform prerequisites, and a verified FFmpeg/FFprobe candidate matching the repository runtime lock for native uploaded-media processing. macOS development also requires Xcode command-line tools and the relevant microphone and screen/system-audio permissions.
 
 ```bash
 corepack enable
@@ -69,9 +90,9 @@ pnpm tauri dev
 
 Detailed instructions are in [Build from Source](docs/BUILD_FROM_SOURCE.md).
 
-## External runtime dependencies
+## Bundled media runtime
 
-This source release does not bundle FFmpeg or FFprobe. Install them separately and ensure both commands are available on `PATH` before processing uploaded audio or video.
+FFmpeg and FFprobe binaries are not committed to the source repository. Native development and release builds stage an audited candidate that matches `apps/desktop/src-tauri/media-runtime.lock`. Release mode uses only the sidecars inside the application bundle and does not fall back to `PATH`, Homebrew, or arbitrary executable locations. See [Bundled Media Runtime](docs/BUNDLED_MEDIA_RUNTIME.md) and [Build from Source](docs/BUILD_FROM_SOURCE.md).
 
 ## Recording and consent
 

@@ -154,6 +154,25 @@ export interface AudioDeviceInfo { id: string; label: string; isDefault: boolean
 export interface SoundCheck { level: number; peak: number; lowVolume: boolean; excessiveNoise: boolean; clipping: boolean; status: string; }
 export interface SystemAudioStatus { available: boolean; supported: boolean; backend: string; permissionStatus: string; deviceLabel: string; requiresRestart: boolean; errorCode?: string; }
 
+export interface MediaRuntimeToolStatus {
+  available: boolean;
+  integrityVerified: boolean;
+  version?: string;
+  sha256?: string;
+  expectedSha256: string;
+  errorCode?: string;
+}
+
+export interface MediaRuntimeStatus {
+  available: boolean;
+  bundled: boolean;
+  mode: string;
+  target: string;
+  expectedVersion: string;
+  ffmpeg: MediaRuntimeToolStatus;
+  ffprobe: MediaRuntimeToolStatus;
+}
+
 export interface ResetVaultStatus {
   activeRealtimeSessions: number;
   cleanupPendingSessions: number;

@@ -30,6 +30,10 @@ import type {
   RealtimeStateUpdate,
 } from "../shared/types";
 import { t } from "../i18n";
+import {
+  releaseSafeProviderId,
+  visibleProviderDefinitions,
+} from "../shared/providerUiRegistry";
 
 type Route =
   | { name: "library" }
@@ -38,6 +42,32 @@ type Route =
   | { name: "upload"; attachId?: string }
   | { name: "project"; projectId: string }
   | { name: "settings" };
+
+function providerErrorCategory(code: string | null) {
+  if (code === "ERR_TEST_PROVIDER_ADAPTER_UI_ONLY") return "configuration";
+  if (!code?.startsWith("ERR_PROVIDER")) return null;
+  if (["ERR_PROVIDER_AUTH", "ERR_PROVIDER_PERMISSION"].includes(code)) {
+    return "authentication";
+  }
+  if ([
+    "ERR_PROVIDER_NOT_CONFIGURED",
+    "ERR_PROVIDER_CONFIG",
+    "ERR_PROVIDER_OPENAI_BASE_URL",
+    "ERR_PROVIDER_NOT_FOUND",
+  ].includes(code)) return "configuration";
+  if (["ERR_PROVIDER_QUOTA", "ERR_PROVIDER_QUOTA_OR_TIMEOUT"].includes(code)) {
+    return "rate_limit";
+  }
+  if ([
+    "ERR_PROVIDER_MODEL_INVALID",
+    "ERR_PROVIDER_MODEL_UNSUPPORTED",
+    "ERR_PROVIDER_UNSUPPORTED_CAPABILITY",
+  ].includes(code)) return "model";
+  if (["ERR_PROVIDER_RESPONSE", "ERR_PROVIDER_SCHEMA"].includes(code)) {
+    return "response_format";
+  }
+  return "network";
+}
 
 export function App() {
   const [initializing, setInitializing] = useState(true);
@@ -52,12 +82,21 @@ export function App() {
   const [languages, setLanguages] = useState<LanguagePreferences>(
     DEFAULT_LANGUAGE_PREFERENCES,
   );
-  const [defaultProviderId, setDefaultProviderId] = useState("mock");
+  const [defaultProviderId, setDefaultProviderId] = useState("openai");
   const [inactivityMinutes, setInactivityMinutes] =
     useState<InactivityLockMinutes>(15);
   const lastActivity = useRef(Date.now());
   const hiddenAtRef = useRef<number | null>(null);
   const lockInFlight = useRef(false);
+
+  const visibleProviders = useMemo(
+    () => visibleProviderDefinitions(providers),
+    [providers],
+  );
+
+  function releaseDefaultProvider(providerId: unknown) {
+    return releaseSafeProviderId(providerId);
+  }
 
   const clearUnlockedState = useCallback(
     (nextErrorCode: string | null = null, nextVaultExists?: boolean) => {
@@ -227,9 +266,7 @@ export function App() {
     setProjects(projectList);
     setStatuses(providerStatuses);
     setLanguages(normalizeLanguagePreferences(settings.languagePreferences));
-    if (settings.defaultProviderId) {
-      setDefaultProviderId(String(settings.defaultProviderId));
-    }
+    setDefaultProviderId(releaseDefaultProvider(settings.defaultProviderId));
     if (
       Object.prototype.hasOwnProperty.call(settings, "inactivityLockMinutes")
     ) {
@@ -348,7 +385,7 @@ export function App() {
       {
         key: "settings",
         icon: "settings" as IconName,
-        label: t("providers.title"),
+        label: t("settings.title"),
         active: route.name === "settings",
         action: () => setRoute({ name: "settings" } as Route),
       },
@@ -376,6 +413,7 @@ export function App() {
   }
 
   const resolvedLanguages = resolveLanguagePreferences(languages);
+  const providerError = providerErrorCategory(errorCode);
 
   return (
     <div className="appFrame">
@@ -418,7 +456,38 @@ export function App() {
         <div className="mainContent">
         {errorCode && (
           <div className="notice error globalErrorNotice" role="alert">
-            <span>{t(`errors.${errorCode}`)}</span>
+            <div className="globalErrorCopy">
+              <strong>{t(`errors.${errorCode}`)}</strong>
+              {providerError && (
+                <span>{t(`providers.errorGuidance.${providerError}`)}</span>
+              )}
+            </div>
+            {providerError && (
+              <div className="globalErrorActions">
+                <button
+                  type="button"
+                  className="secondaryButton"
+                  onClick={() => {
+                    setErrorCode(null);
+                    setRoute({ name: "settings" });
+                  }}
+                >
+                  {t("providers.openSettingsAction")}
+                </button>
+                {activeDetail && (
+                  <button
+                    type="button"
+                    className="secondaryButton"
+                    onClick={() => {
+                      setErrorCode(null);
+                      setRoute({ name: "project", projectId: activeDetail.project.id });
+                    }}
+                  >
+                    {t("providers.openMeetingAction")}
+                  </button>
+                )}
+              </div>
+            )}
             <button
               className="iconButton"
               type="button"
@@ -440,7 +509,7 @@ export function App() {
         {route.name === "online" && (
           <MeetingStartPage
             mode="online"
-            providers={providers}
+            providers={visibleProviders}
             providerStatuses={statuses}
             preferences={languages}
             defaultProviderId={defaultProviderId}
@@ -451,7 +520,7 @@ export function App() {
         {route.name === "inPerson" && (
           <MeetingStartPage
             mode="in_person"
-            providers={providers}
+            providers={visibleProviders}
             providerStatuses={statuses}
             preferences={languages}
             defaultProviderId={defaultProviderId}
@@ -463,7 +532,7 @@ export function App() {
           <UploadPage
             key={route.attachId ?? "new"}
             projects={projects}
-            providers={providers}
+            providers={visibleProviders}
             providerStatuses={statuses}
             defaultProviderId={defaultProviderId}
             initialAttachId={route.attachId}
@@ -480,7 +549,7 @@ export function App() {
           <ProjectDetailPage
             detail={activeDetail}
             defaultProviderId={defaultProviderId}
-            providers={providers}
+            providers={visibleProviders}
             providerStatuses={statuses}
             analysisLanguage={resolvedLanguages.analysisOutputLanguage}
             onAttach={(projectId) => setRoute({ name: "upload", attachId: projectId })}
@@ -490,7 +559,7 @@ export function App() {
         )}
         {route.name === "settings" && (
           <SettingsPage
-            providers={providers}
+            providers={visibleProviders}
             providerStatuses={statuses}
             preferences={languages}
             defaultProviderId={defaultProviderId}

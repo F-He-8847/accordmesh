@@ -1,10 +1,15 @@
 import { useMemo, useState } from "react";
 import { Dialog } from "../../components/Dialog";
 import { Icon } from "../../components/Icon";
+import { EmptyState } from "../../components/EmptyState";
 import { api } from "../../shared/api";
 import type { MeetingProject, ProjectOrigin, ProjectStatus } from "../../shared/types";
 import { t } from "../../i18n";
 import { canDeleteProject, deleteGuardKey } from "./projectDeletion";
+import {
+  PROJECT_TITLE_MAX_CHARS,
+  projectTitleLength,
+} from "../../shared/projectTitle";
 
 interface Props {
   projects: MeetingProject[];
@@ -35,12 +40,18 @@ export function LibraryPage({ projects, onOpen, onRefresh, onError }: Props) {
       );
   }, [origin, projects, query, sort, status]);
 
+  const titleDraftLength = projectTitleLength(titleDraft);
+  const titleDraftOverLimit = titleDraftLength > PROJECT_TITLE_MAX_CHARS;
   const editingProject = projects.find((project) => project.id === editingId) ?? null;
   const deletingProject =
     projects.find((project) => project.id === confirmingDeleteId) ?? null;
 
   async function rename(project: MeetingProject) {
     const title = titleDraft.trim();
+    if (titleDraftOverLimit) {
+      onError("ERR_TITLE_TOO_LONG");
+      return;
+    }
     if (!title || title === project.title || actionBusy) {
       setEditingId(null);
       return;
@@ -139,11 +150,11 @@ export function LibraryPage({ projects, onOpen, onRefresh, onError }: Props) {
       </div>
 
       {visible.length === 0 ? (
-        <div className="emptyState libraryEmptyState">
-          <span className="emptyStateIcon"><Icon name="library" size={28} /></span>
-          <strong>{t("library.empty")}</strong>
-          <p>{query ? t("library.noSearchResults") : t("library.emptyHint")}</p>
-        </div>
+        <EmptyState
+          icon="library"
+          title={t("library.empty")}
+          description={query ? t("library.noSearchResults") : t("library.emptyHint")}
+        />
       ) : (
         <div className="projectGrid" aria-label={t("accessibility.projectList")}>
           {visible.map((project) => {
@@ -233,7 +244,7 @@ export function LibraryPage({ projects, onOpen, onRefresh, onError }: Props) {
             <button
               type="button"
               className="primaryButton"
-              disabled={!titleDraft.trim() || actionBusy}
+              disabled={!titleDraft.trim() || titleDraftOverLimit || actionBusy}
               onClick={() => editingProject && void rename(editingProject)}
             >
               {actionBusy ? t("common.saving") : t("common.save")}
@@ -245,24 +256,27 @@ export function LibraryPage({ projects, onOpen, onRefresh, onError }: Props) {
           <span>{t("library.renamePlaceholder")}</span>
           <input
             value={titleDraft}
-            maxLength={240}
+            aria-invalid={titleDraftOverLimit}
             autoFocus
             onChange={(event) => setTitleDraft(event.target.value)}
             onKeyDown={(event) => {
-              if (event.key === "Enter" && editingProject) void rename(editingProject);
+              if (event.key === "Enter" && editingProject && !titleDraftOverLimit) void rename(editingProject);
             }}
           />
+          <small className={`characterCount ${titleDraftOverLimit ? "isOverLimit" : ""}`}>
+            {t("library.titleCharacterCount", {
+              count: titleDraftLength,
+              max: PROJECT_TITLE_MAX_CHARS,
+            })}
+          </small>
+          {titleDraftOverLimit && <small className="fieldError">{t("errors.ERR_TITLE_TOO_LONG")}</small>}
         </label>
       </Dialog>
 
       <Dialog
         open={Boolean(deletingProject && canDeleteProject(deletingProject))}
         title={t("library.deleteDialogTitle")}
-        description={
-          deletingProject
-            ? t("library.deleteConfirm", { projectName: deletingProject.title })
-            : undefined
-        }
+        description={deletingProject ? t("library.deleteDialogDescription") : undefined}
         tone="irreversible"
         closeLabel={t("common.close")}
         onClose={() => {
@@ -283,7 +297,13 @@ export function LibraryPage({ projects, onOpen, onRefresh, onError }: Props) {
             </button>
           </>
         }
-      />
+      >
+        {deletingProject && (
+          <p className="dialogProjectName" title={deletingProject.title}>
+            {deletingProject.title}
+          </p>
+        )}
+      </Dialog>
     </section>
   );
 }

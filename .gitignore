@@ -11,6 +11,7 @@ apps/desktop/vite.config.d.ts
 # Rust and Tauri output
 target/
 apps/desktop/src-tauri/binaries/
+apps/desktop/src-tauri/gen/
 
 # Environment files and credentials
 .env

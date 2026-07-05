@@ -58,7 +58,7 @@ The remaining inventory primarily uses MIT, Apache-2.0, BSD, ISC, Zlib, Unlicens
 
 ## FFmpeg and platform SDKs
 
-The source repository does not bundle FFmpeg or FFprobe. They are external runtime tools installed by the user. A future installer that bundles an FFmpeg build requires a separate review of the exact build configuration and corresponding LGPL/GPL obligations.
+The source repository does not commit FFmpeg or FFprobe binaries. The Apple Silicon installable-release pipeline uses a separately audited FFmpeg 8.1.2 candidate built under an LGPL 2.1-or-later configuration with `CONFIG_GPL=0` and `CONFIG_NONFREE=0`. The native runtime is staged from private release evidence, checked against the committed unsigned-runtime lock, and packaged as application sidecars. Final signed-binary hashes and LGPL compliance materials must be regenerated for each binary release.
 
 Apple platform SDK files, signing identities, provisioning profiles, and private keys are not included in the repository.
 

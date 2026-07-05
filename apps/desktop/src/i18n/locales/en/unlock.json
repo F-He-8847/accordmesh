@@ -32,5 +32,11 @@
   "resetOperationBusyPlural": "{{count}} local operations are still in progress. Finish them before resetting the vault.",
   "resetActiveMeetings": "Meeting sessions or cleanup tasks: {{count}}",
   "resetActiveJobs": "Background processing tasks: {{count}}",
-  "resetAlreadyInProgress": "Reset Vault is already in progress. Wait for AccordMesh to finish."
+  "resetAlreadyInProgress": "Reset Vault is already in progress. Wait for AccordMesh to finish.",
+  "createTitle": "Create your local vault",
+  "createBody": "Create one local password for this device. AccordMesh has no cloud account and cannot recover this password.",
+  "unlockTitle": "Unlock AccordMesh",
+  "unlockBody": "Enter the local password that unlocks the encrypted vault on this device.",
+  "showPassword": "Show",
+  "hidePassword": "Hide"
 }

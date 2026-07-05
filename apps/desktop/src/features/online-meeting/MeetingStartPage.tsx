@@ -1,4 +1,4 @@
-import { FormEvent, useEffect, useMemo, useState } from "react";
+import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import type {
   AudioDeviceInfo,
   LanguagePreferences,
@@ -15,6 +15,10 @@ import {
   resolveLanguagePreferences,
 } from "../../shared/languagePreferences";
 import { t } from "../../i18n";
+import {
+  PROJECT_TITLE_MAX_CHARS,
+  projectTitleLength,
+} from "../../shared/projectTitle";
 
 interface Props {
   mode: RealtimeMode;
@@ -50,6 +54,7 @@ export function MeetingStartPage({
   const [loadingDevices, setLoadingDevices] = useState(false);
   const [checkingSound, setCheckingSound] = useState(false);
   const [requestingSystemAudio, setRequestingSystemAudio] = useState(false);
+  const soundCheckRunRef = useRef(0);
   const isOnline = mode === "online";
 
   const provider = useMemo(
@@ -128,32 +133,69 @@ export function MeetingStartPage({
     }
   }
 
+  useEffect(() => {
+    soundCheckRunRef.current += 1;
+    setCheckingSound(false);
+    setCheck(null);
+    void api.cancelSoundCheck();
+    return () => {
+      soundCheckRunRef.current += 1;
+      void api.cancelSoundCheck();
+    };
+  }, [deviceId, mode]);
+
   async function soundCheck() {
     if (!deviceId) return;
+    const runId = soundCheckRunRef.current + 1;
+    soundCheckRunRef.current = runId;
     setCheckingSound(true);
     setCheck(null);
     try {
       if (!api.isNative) {
-        setCheck({
-          level: 0.42,
-          peak: 0.61,
-          lowVolume: false,
-          excessiveNoise: false,
-          clipping: false,
-          status: "ready",
-        });
+        if (soundCheckRunRef.current === runId) {
+          setCheck({
+            level: 0.42,
+            peak: 0.61,
+            lowVolume: false,
+            excessiveNoise: false,
+            clipping: false,
+            status: "ready",
+          });
+        }
         return;
       }
-      setCheck(await api.soundCheck(deviceId));
+      const result = await api.soundCheck(deviceId);
+      if (soundCheckRunRef.current === runId) setCheck(result);
+    } catch (error) {
+      const code = String(error);
+      if (
+        soundCheckRunRef.current === runId &&
+        code !== "ERR_AUDIO_CHECK_CANCELLED"
+      ) {
+        onError(code);
+      }
+    } finally {
+      if (soundCheckRunRef.current === runId) setCheckingSound(false);
+    }
+  }
+
+  async function cancelSoundCheck() {
+    soundCheckRunRef.current += 1;
+    setCheckingSound(false);
+    setCheck(null);
+    try {
+      await api.cancelSoundCheck();
     } catch (error) {
       onError(String(error));
-    } finally {
-      setCheckingSound(false);
     }
   }
 
   async function submit(event: FormEvent) {
     event.preventDefault();
+    if (projectTitleLength(title) > PROJECT_TITLE_MAX_CHARS) {
+      onError("ERR_TITLE_TOO_LONG");
+      return;
+    }
     setBusy(true);
     try {
       await onStart(mode, title, deviceId, providerId);
@@ -164,10 +206,13 @@ export function MeetingStartPage({
     }
   }
 
+  const titleLength = projectTitleLength(title);
+  const titleOverLimit = titleLength > PROJECT_TITLE_MAX_CHARS;
   const systemReady =
     !isOnline || providerId === "mock" || systemAudio?.available === true;
   const canStart = Boolean(
     title.trim() &&
+      !titleOverLimit &&
       deviceId &&
       selectedDevice?.available &&
       provider?.capabilities.realtimeTranscription &&
@@ -216,7 +261,19 @@ export function MeetingStartPage({
         )}
         <label className="meetingField">
           <span>{t("realtime.projectTitle")}</span>
-          <input value={title} onChange={(event) => setTitle(event.target.value)} />
+          <input
+            value={title}
+            aria-invalid={titleOverLimit}
+            onChange={(event) => setTitle(event.target.value)}
+            required
+          />
+          <small className={`characterCount ${titleOverLimit ? "isOverLimit" : ""}`}>
+            {t("realtime.titleCharacterCount", {
+              count: titleLength,
+              max: PROJECT_TITLE_MAX_CHARS,
+            })}
+          </small>
+          {titleOverLimit && <small className="fieldError">{t("errors.ERR_TITLE_TOO_LONG")}</small>}
         </label>
 
         {isOnline && (
@@ -303,10 +360,10 @@ export function MeetingStartPage({
               )}
               <button
                 type="button"
-                onClick={() => void soundCheck()}
-                disabled={!deviceId || loadingDevices || checkingSound}
+                onClick={() => void (checkingSound ? cancelSoundCheck() : soundCheck())}
+                disabled={!deviceId || loadingDevices}
               >
-                {checkingSound ? t("common.processing") : t("realtime.runSoundCheck")}
+                {checkingSound ? t("realtime.cancelSoundCheck") : t("realtime.runSoundCheck")}
               </button>
               {check && (
                 <div className="soundCheckResult">

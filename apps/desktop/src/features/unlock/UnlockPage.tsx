@@ -14,6 +14,8 @@ interface Props {
 export function UnlockPage({ vaultExists, errorCode, onUnlocked, onError }: Props) {
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [accepted, setAccepted] = useState(false);
   const [resetOpen, setResetOpen] = useState(false);
   const canOfferReset = vaultExists || errorCode === "ERR_ORPHANED_DATA";
@@ -58,8 +60,8 @@ export function UnlockPage({ vaultExists, errorCode, onUnlocked, onError }: Prop
         <div className="unlockPanelHeader">
           <span className="unlockPanelIcon"><Icon name="lock" size={24} /></span>
           <div>
-            <h1>{t("unlock.welcomeTitle")}</h1>
-            <p>{t("unlock.welcomeBody")}</p>
+            <h1>{t(vaultExists ? "unlock.unlockTitle" : "unlock.createTitle")}</h1>
+            <p>{t(vaultExists ? "unlock.unlockBody" : "unlock.createBody")}</p>
           </div>
         </div>
 
@@ -68,26 +70,48 @@ export function UnlockPage({ vaultExists, errorCode, onUnlocked, onError }: Prop
         <form onSubmit={submit} className="formStack unlockForm">
           <label>
             {vaultExists ? t("unlock.unlockPassword") : t("unlock.createPassword")}
-            <input
-              type="password"
-              value={password}
-              onChange={(event) => setPassword(event.target.value)}
-              minLength={8}
-              autoFocus
-              required
-            />
+            <span className="passwordField">
+              <input
+                type={showPassword ? "text" : "password"}
+                value={password}
+                onChange={(event) => setPassword(event.target.value)}
+                minLength={8}
+                autoFocus
+                required
+              />
+              <button
+                type="button"
+                className="passwordRevealTextButton"
+                onClick={() => setShowPassword((value) => !value)}
+                aria-label={t(showPassword ? "unlock.hidePassword" : "unlock.showPassword")}
+                aria-pressed={showPassword}
+              >
+                {t(showPassword ? "unlock.hidePassword" : "unlock.showPassword")}
+              </button>
+            </span>
           </label>
           {!vaultExists && (
             <>
               <label>
                 {t("unlock.confirmPassword")}
-                <input
-                  type="password"
-                  value={confirmPassword}
-                  onChange={(event) => setConfirmPassword(event.target.value)}
-                  minLength={8}
-                  required
-                />
+                <span className="passwordField">
+                  <input
+                    type={showConfirmPassword ? "text" : "password"}
+                    value={confirmPassword}
+                    onChange={(event) => setConfirmPassword(event.target.value)}
+                    minLength={8}
+                    required
+                  />
+                  <button
+                    type="button"
+                    className="passwordRevealTextButton"
+                    onClick={() => setShowConfirmPassword((value) => !value)}
+                    aria-label={t(showConfirmPassword ? "unlock.hidePassword" : "unlock.showPassword")}
+                    aria-pressed={showConfirmPassword}
+                  >
+                    {t(showConfirmPassword ? "unlock.hidePassword" : "unlock.showPassword")}
+                  </button>
+                </span>
               </label>
               <label className="checkRow consentRow">
                 <input

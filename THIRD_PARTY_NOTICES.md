@@ -22,7 +22,7 @@ The Rust dependency graph includes Unicode/ICU components under Unicode-3.0 and 
 
 ## FFmpeg and FFprobe
 
-FFmpeg and FFprobe are external runtime tools. They are **not bundled** in this source repository. Users install them separately. Any future binary distribution that bundles an FFmpeg build requires a separate review of that build's exact configuration and LGPL/GPL obligations.
+FFmpeg and FFprobe binaries are not committed to this source repository. Installable macOS release construction may bundle a separately audited FFmpeg build as application sidecars. The approved Apple Silicon runtime is built from FFmpeg 8.1.2 official source under an LGPL 2.1-or-later configuration with GPL and nonfree components disabled. Each binary release must publish or reference the exact build information, corresponding source materials, hashes, notices, and LGPL compliance artifacts for the bytes it distributes.
 
 ## Platform SDKs
 

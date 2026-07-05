@@ -14,6 +14,7 @@ import type {
 import { t } from "../../i18n";
 import { Dialog } from "../../components/Dialog";
 import { Icon } from "../../components/Icon";
+import { EmptyState } from "../../components/EmptyState";
 import type { IconName } from "../../components/Icon";
 import {
   artifactSelectionKey,
@@ -44,6 +45,14 @@ import {
   deleteGuardKey,
 } from "../library/projectDeletion";
 import { LANGUAGE_CODES, languageLabelKey } from "../../shared/languagePreferences";
+import {
+  PROJECT_TITLE_MAX_CHARS,
+  projectTitleLength,
+} from "../../shared/projectTitle";
+import {
+  isUiOnlyProvider,
+  visibleProviderDefinitions,
+} from "../../shared/providerUiRegistry";
 
 interface Props {
   detail: ProjectDetail;
@@ -80,6 +89,13 @@ interface RegenerationRequest {
   artifact: AnalysisArtifact;
 }
 
+interface RegenerationProviderChoice {
+  definition: ProviderDefinition;
+  status: ProviderConfigurationStatus;
+  selectable: boolean;
+  reasonKey?: string;
+}
+
 interface PendingRegenerationSelection {
   type: RegeneratableArtifactType;
   selectionKey: string;
@@ -95,6 +111,9 @@ const workspaceTabs: Array<{ id: WorkspaceTab; icon: IconName }> = [
   { id: "files", icon: "upload" },
   { id: "history", icon: "sort" },
 ];
+const compactWorkspaceTabs = workspaceTabs.slice(0, 4);
+const overflowWorkspaceTabs = workspaceTabs.slice(4);
+
 const transcriptTabs: TranscriptTab[] = [
   "sourceTranscript",
   "translations",
@@ -226,10 +245,21 @@ export function ProjectDetailPage({
     ),
     [detail.jobs],
   );
+
+  useEffect(() => {
+    if (activeJobs.length === 0) return undefined;
+    const timer = window.setInterval(() => {
+      void refresh();
+    }, 1_500);
+    return () => window.clearInterval(timer);
+  }, [activeJobs.length, detail.project.id]);
+
   const failedJobs = useMemo(
     () => detail.jobs.filter((job) => ["failed", "cancelled"].includes(job.status)),
     [detail.jobs],
   );
+  const titleDraftLength = projectTitleLength(titleDraft);
+  const titleDraftOverLimit = titleDraftLength > PROJECT_TITLE_MAX_CHARS;
 
   async function refresh() {
     await onChanged(await api.getProjectDetail(detail.project.id));
@@ -237,6 +267,10 @@ export function ProjectDetailPage({
 
   async function rename() {
     const title = titleDraft.trim();
+    if (titleDraftOverLimit) {
+      onError("ERR_TITLE_TOO_LONG");
+      return;
+    }
     if (!title || title === detail.project.title || titleBusy) {
       setEditingTitle(false);
       return;
@@ -457,7 +491,6 @@ export function ProjectDetailPage({
           <div className="projectMetaLine">
             <span>{originLabel(detail.project.origin)}</span>
             <span>{new Date(detail.project.createdAt).toLocaleString()}</span>
-            <span>{t("common.readOnly")}</span>
           </div>
         </div>
         <div className="headerActions projectHeaderActions">
@@ -552,17 +585,60 @@ export function ProjectDetailPage({
       )}
 
       <nav className="projectPrimaryNav" aria-label={t("project.workspaceNavigation")}>
-        {workspaceTabs.map((item) => (
-          <button
-            key={item.id}
-            className={workspaceTab === item.id ? "active" : ""}
-            aria-current={workspaceTab === item.id ? "page" : undefined}
-            onClick={() => openWorkspace(item.id)}
+        <div className="projectPrimaryNavAll">
+          {workspaceTabs.map((item) => (
+            <button
+              key={item.id}
+              className={workspaceTab === item.id ? "active" : ""}
+              aria-current={workspaceTab === item.id ? "page" : undefined}
+              onClick={() => openWorkspace(item.id)}
+            >
+              <Icon name={item.icon} size={17}/>
+              <span>{t(`project.workspaceTabs.${item.id}`)}</span>
+            </button>
+          ))}
+        </div>
+        <div className="projectPrimaryNavCompact">
+          {compactWorkspaceTabs.map((item) => (
+            <button
+              key={item.id}
+              className={workspaceTab === item.id ? "active" : ""}
+              aria-current={workspaceTab === item.id ? "page" : undefined}
+              onClick={() => openWorkspace(item.id)}
+            >
+              <Icon name={item.icon} size={17}/>
+              <span>{t(`project.workspaceTabs.${item.id}`)}</span>
+            </button>
+          ))}
+          <details
+            className={`projectPrimaryNavMore ${
+              overflowWorkspaceTabs.some((item) => item.id === workspaceTab)
+                ? "active"
+                : ""
+            }`}
           >
-            <Icon name={item.icon} size={17}/>
-            <span>{t(`project.workspaceTabs.${item.id}`)}</span>
-          </button>
-        ))}
+            <summary aria-label={t("project.moreWorkspaceTabs")}>
+              <Icon name="sort" size={17}/>
+              <span>{t("common.more")}</span>
+            </summary>
+            <div className="projectPrimaryNavMenu">
+              {overflowWorkspaceTabs.map((item) => (
+                <button
+                  key={item.id}
+                  className={workspaceTab === item.id ? "active" : ""}
+                  aria-current={workspaceTab === item.id ? "page" : undefined}
+                  onClick={(event) => {
+                    openWorkspace(item.id);
+                    event.currentTarget.closest("details")?.removeAttribute("open");
+                  }}
+                >
+                  <Icon name={item.icon} size={17}/>
+                  <span>{t(`project.workspaceTabs.${item.id}`)}</span>
+                </button>
+              ))}
+            </div>
+          </details>
+        </div>
       </nav>
 
       <div className="projectContentShell">
@@ -757,7 +833,7 @@ export function ProjectDetailPage({
             <button
               type="button"
               className="primaryButton"
-              disabled={!titleDraft.trim() || titleBusy}
+              disabled={!titleDraft.trim() || titleDraftOverLimit || titleBusy}
               onClick={() => void rename()}
             >
               {titleBusy ? t("common.saving") : t("common.save")}
@@ -769,20 +845,27 @@ export function ProjectDetailPage({
           <span>{t("library.renamePlaceholder")}</span>
           <input
             value={titleDraft}
-            maxLength={240}
+            aria-invalid={titleDraftOverLimit}
             autoFocus
             onChange={(event) => setTitleDraft(event.target.value)}
             onKeyDown={(event) => {
-              if (event.key === "Enter") void rename();
+              if (event.key === "Enter" && !titleDraftOverLimit) void rename();
             }}
           />
+          <small className={`characterCount ${titleDraftOverLimit ? "isOverLimit" : ""}`}>
+            {t("project.titleCharacterCount", {
+              count: titleDraftLength,
+              max: PROJECT_TITLE_MAX_CHARS,
+            })}
+          </small>
+          {titleDraftOverLimit && <small className="fieldError">{t("errors.ERR_TITLE_TOO_LONG")}</small>}
         </label>
       </Dialog>
 
       <Dialog
         open={confirmingDelete && canDelete}
         title={t("library.deleteDialogTitle")}
-        description={t("library.deleteConfirm", { projectName: detail.project.title })}
+        description={t("library.deleteDialogDescription")}
         tone="irreversible"
         closeLabel={t("common.close")}
         onClose={() => {
@@ -798,7 +881,11 @@ export function ProjectDetailPage({
             </button>
           </>
         }
-      />
+      >
+        <p className="dialogProjectName" title={detail.project.title}>
+          {detail.project.title}
+        </p>
+      </Dialog>
 
       <Dialog
         open={confirmingStop}
@@ -994,6 +1081,7 @@ function OverviewPanel({
       id: "transcript" as const,
       icon: "media" as IconName,
       count: detail.timeline.length,
+      countLabel: t("project.counts.transcriptSegments", { count: detail.timeline.length }),
       ready: detail.timeline.length > 0,
     },
     {
@@ -1002,21 +1090,43 @@ function OverviewPanel({
       count: detail.artifacts.filter((artifact) =>
         ["segment_understanding", "post_meeting_analysis", "communication_review"].includes(artifact.artifactType),
       ).length,
+      countLabel: t("project.counts.generatedResults", {
+        count: detail.artifacts.filter((artifact) =>
+          ["segment_understanding", "post_meeting_analysis", "communication_review"].includes(artifact.artifactType),
+        ).length,
+      }),
       ready: artifactCount > 0,
     },
     {
       id: "minutes" as const,
       icon: "minutes" as IconName,
       count: detail.artifacts.filter((artifact) => artifact.artifactType === "meeting_minutes").length,
+      countLabel: t("project.counts.minutesDrafts", {
+        count: detail.artifacts.filter((artifact) => artifact.artifactType === "meeting_minutes").length,
+      }),
       ready: Boolean(detail.project.hasMinutes),
     },
     {
       id: "comparison" as const,
       icon: "comparison" as IconName,
       count: detail.artifacts.filter((artifact) => artifact.artifactType === "intelligent_comparison_report").length,
+      countLabel: t("project.counts.comparisonReports", {
+        count: detail.artifacts.filter((artifact) => artifact.artifactType === "intelligent_comparison_report").length,
+      }),
       ready: Boolean(detail.project.hasComparison),
     },
   ];
+  const sourceMediaById = buildSourceMediaById(detail.mediaAssets);
+  const previewSegments = [...detail.timeline]
+    .reverse()
+    .filter((segment, index, all) => {
+      const text = segment.sourceTranscript.trim().toLocaleLowerCase();
+      return all.findIndex(
+        (candidate) => candidate.sourceTranscript.trim().toLocaleLowerCase() === text,
+      ) === index;
+    })
+    .slice(0, 3)
+    .reverse();
   return (
     <div className="overviewLayout">
       <section className="overviewMetricGrid" aria-label={t("project.projectSummary")}>
@@ -1038,19 +1148,19 @@ function OverviewPanel({
         />
         <Info
           label={t("project.timeline")}
-          value={String(detail.timeline.length)}
+          value={t("project.counts.transcriptSegments", { count: detail.timeline.length })}
           icon="media"
           numeric
         />
         <Info
           label={t("project.materials")}
-          value={String(detail.mediaAssets.length)}
+          value={t("project.counts.sourceFiles", { count: detail.mediaAssets.length })}
           icon="upload"
           numeric
         />
         <Info
           label={t("project.generatedArtifacts")}
-          value={String(artifactCount)}
+          value={t("project.counts.generatedResults", { count: artifactCount })}
           icon="analyze"
           numeric
         />
@@ -1076,7 +1186,7 @@ function OverviewPanel({
                 <strong>{t(`project.workspaceTabs.${output.id}`)}</strong>
                 <small>
                   {output.ready
-                    ? t("project.outputReady", { count: output.count })
+                    ? output.countLabel
                     : t("project.outputNotReady")}
                 </small>
               </span>
@@ -1093,17 +1203,29 @@ function OverviewPanel({
           </div>
           <button onClick={() => onOpen("transcript")}>{t("project.openTranscript")}</button>
         </div>
-        {detail.timeline.length ? (
+        {previewSegments.length ? (
           <div className="evidencePreviewList">
-            {detail.timeline.slice(-3).map((segment) => (
-              <article key={segment.id}>
-                <span>{formatTime(segment.startMs)}</span>
-                <p>{segment.sourceTranscript}</p>
-              </article>
-            ))}
+            {previewSegments.map((segment) => {
+              const sourceKind = classifyTranscriptEvidence(detail.project.origin, segment);
+              const sourceMedia = mediaForSegment(segment, sourceMediaById);
+              return (
+                <article key={segment.id}>
+                  <span className="evidencePreviewMeta">
+                    {formatTime(segment.startMs)} · {t(`project.transcriptSources.${sourceKind}`)}
+                    {sourceMedia ? ` · ${sourceMedia.originalFileName}` : ""}
+                  </span>
+                  <p>{segment.sourceTranscript}</p>
+                </article>
+              );
+            })}
           </div>
         ) : (
-          <div className="emptyState">{t("project.noTranscriptEvidence")}</div>
+          <EmptyState
+            icon="media"
+            title={t("project.noTranscriptEvidenceTitle")}
+            description={t("project.noTranscriptEvidence")}
+            compact
+          />
         )}
       </section>
     </div>
@@ -1155,7 +1277,14 @@ function TimelinePanel({
 
 function MaterialsPanel({ detail }: { detail: ProjectDetail }) {
   if (!detail.mediaAssets.length) {
-    return <div className="emptyState">{t("project.noMaterials")}</div>;
+    return (
+      <EmptyState
+        icon="upload"
+        title={t("project.noMaterialsTitle")}
+        description={t("project.noMaterials")}
+        compact
+      />
+    );
   }
   return (
     <div className="materialGrid">
@@ -1168,6 +1297,16 @@ function MaterialsPanel({ detail }: { detail: ProjectDetail }) {
               {t(`upload.kind${asset.kind[0].toUpperCase()}${asset.kind.slice(1)}`)} · {displayMediaStatus(asset.processingStatus)}
             </span>
             <small>{asset.sha256}</small>
+            {asset.processingStatus === "attached" && (
+              <small className="materialStatusHint">
+                {t("project.attachedProcessingFailedHint")}
+              </small>
+            )}
+            {asset.processingStatus === "failed" && (
+              <small className="materialStatusHint errorText">
+                {t("project.failedProcessingFileHint")}
+              </small>
+            )}
           </div>
         </article>
       ))}
@@ -1423,7 +1562,14 @@ function HistoryPanel({
               <span className={`statusBadge status-${run.status}`}>{displayRunStatus(run.status)}</span>
               {run.errorCode && <span className="errorText">{t(`errors.${run.errorCode}`)}</span>}
             </article>
-          )) : <div className="emptyState">{t("project.noGenerationHistory")}</div>}
+          )) : (
+            <EmptyState
+              icon="sort"
+              title={t("project.noGenerationHistoryTitle")}
+              description={t("project.noGenerationHistory")}
+              compact
+            />
+          )}
         </div>
       </section>
     </div>
@@ -1442,7 +1588,7 @@ function HistoryMetric({
   return (
     <article className={`historyMetric ${tone ? `historyMetric-${tone}` : ""}`}>
       <span>{label}</span>
-      <strong>{value}</strong>
+      <strong>{t("project.counts.processingRuns", { count: value })}</strong>
     </article>
   );
 }
@@ -1577,20 +1723,21 @@ function RegenerationControls({
   onModelChange: (modelId: string) => void;
   onLanguageChange: (language: string) => void;
 }) {
-  const compatible = compatibleRegenerationProviders(
+  const choices = regenerationProviderChoices(
     request.type,
     providers,
     providerStatuses,
   );
-  const selected = compatible.find(
+  const selected = choices.find(
     (provider) => provider.definition.id === providerId,
   );
-  const models = selected
+  const selectedRuntimeProvider = selected?.selectable ? selected : undefined;
+  const models = selectedRuntimeProvider
     ? regenerationModelOptions(
         request.type,
         request.artifact,
-        selected.definition,
-        selected.status,
+        selectedRuntimeProvider.definition,
+        selectedRuntimeProvider.status,
       )
     : [];
   const sourceLabel = `${artifactTypeLabel(request.type)} · ${new Date(
@@ -1601,12 +1748,12 @@ function RegenerationControls({
     <div className="regenerationForm">
       <div className="regenerationSourceSummary">
         <span>{t("project.regeneration.basedOn")}</span>
-        <strong>{sourceLabel}</strong>
+        <strong title={sourceLabel}>{sourceLabel}</strong>
         {request.type === "meeting_minutes" && (
           <small>{t("project.regeneration.minutesSourcesNotice")}</small>
         )}
       </div>
-      {compatible.length ? (
+      {choices.length ? (
         <>
           <label className="dialogField">
             <span>{t("project.regeneration.provider")}</span>
@@ -1614,16 +1761,22 @@ function RegenerationControls({
               value={providerId}
               onChange={(event) => onProviderChange(event.target.value)}
             >
-              {compatible.map(({ definition }) => (
-                <option key={definition.id} value={definition.id}>
+              {choices.map(({ definition, reasonKey }) => (
+                <option
+                  key={definition.id}
+                  value={definition.id}
+                >
                   {t(definition.displayNameKey)}
+                  {reasonKey ? ` — ${t(reasonKey)}` : ""}
                 </option>
               ))}
             </select>
             <small>
-              {selected?.definition.id === "mock"
-                ? t("project.regeneration.mockProviderAvailable")
-                : t("project.regeneration.configuredNotVerified")}
+              {selected?.reasonKey
+                ? t(selected.reasonKey)
+                : selected?.definition.id === "mock"
+                  ? t("project.regeneration.mockProviderAvailable")
+                  : t("project.regeneration.configuredNotVerified")}
             </small>
           </label>
           <label className="dialogField">
@@ -1751,7 +1904,14 @@ function ArtifactVersions({
 }) {
   const usable = usableArtifacts(artifacts);
   if (!usable.length)
-    return <div className="emptyState">{t("project.noArtifacts")}</div>;
+    return (
+      <EmptyState
+        icon="analyze"
+        title={t("project.noArtifactsTitle")}
+        description={t("project.noArtifacts")}
+        compact
+      />
+    );
   return (
     <div className="artifactStack">
       {groupArtifactsBySelectionScope(usable).map((scopeArtifacts) => (
@@ -1785,7 +1945,16 @@ function ArtifactVersionScope({
   timeline?: TimelineSegment[];
 }) {
   const ordered = usableArtifacts(artifacts).sort(compareArtifacts);
-  if (!ordered.length) return <div className="emptyState">{t("project.noUsableArtifacts")}</div>;
+  if (!ordered.length) {
+    return (
+      <EmptyState
+        icon="analyze"
+        title={t("project.noUsableArtifactsTitle")}
+        description={t("project.noUsableArtifacts")}
+        compact
+      />
+    );
+  }
   const selectionKey = artifactSelectionKey(ordered[0]);
   const selected = selectedVersionByScope[selectionKey];
   const current =
@@ -2470,16 +2639,57 @@ function jobKindLabel(kind: string) {
   return human(kind);
 }
 
+function regenerationProviderChoices(
+  type: RegeneratableArtifactType,
+  providers: ProviderDefinition[],
+  statuses: ProviderConfigurationStatus[],
+): RegenerationProviderChoice[] {
+  const capability = artifactCapability(type);
+  return visibleProviderDefinitions(providers).flatMap((definition): RegenerationProviderChoice[] => {
+    if (!definition.capabilities[capability]) return [];
+    const status = statuses.find((item) => item.providerId === definition.id);
+    if (isUiOnlyProvider(definition.id)) {
+      return [{
+        definition,
+        status: syntheticProviderStatus(definition),
+        selectable: true,
+        reasonKey: "providers.uiExtensionTestOnly",
+      }];
+    }
+    return status?.configured
+      ? [{ definition, status, selectable: true }]
+      : [];
+  });
+}
+
+function syntheticProviderStatus(
+  definition: ProviderDefinition,
+): ProviderConfigurationStatus {
+  const configuration = Object.fromEntries(
+    definition.configurationSchema
+      .filter((field) => field.defaultValue !== undefined)
+      .map((field) => [field.id, field.defaultValue]),
+  );
+  return {
+    providerId: definition.id,
+    stored: false,
+    configured: true,
+    configuredFields: Object.keys(configuration),
+    credentialFieldsConfigured: [],
+    missingRequiredFields: [],
+    configuration,
+    maskedSummary: "ready",
+  };
+}
+
 function compatibleRegenerationProviders(
   type: RegeneratableArtifactType,
   providers: ProviderDefinition[],
   statuses: ProviderConfigurationStatus[],
 ) {
-  const capability = artifactCapability(type);
-  return providers.flatMap((definition) => {
-    const status = statuses.find((item) => item.providerId === definition.id);
-    return status?.configured && definition.capabilities[capability]
-      ? [{ definition, status }]
+  return regenerationProviderChoices(type, providers, statuses).flatMap((choice) => {
+    return choice.selectable
+      ? [{ definition: choice.definition, status: choice.status }]
       : [];
   });
 }

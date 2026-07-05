@@ -5,7 +5,7 @@ AccordMesh is a Developer Preview. Current limitations include:
 - macOS is the primary validated platform. There is no complete validated Windows or Linux release.
 - Windows system-audio loopback capture is not yet implemented.
 - The source release is not accompanied by a signed or notarized macOS installer.
-- FFmpeg and FFprobe must be installed separately.
+- FFmpeg and FFprobe binaries are not stored in the source repository. Native developers must stage a verified candidate matching the runtime lock; installable releases bundle the audited sidecars.
 - Live OpenAI API smoke testing is pending maintainer API access. Offline provider contract tests do not prove current model availability or real-network behavior.
 - Provider quality, language coverage, latency, pricing, and retention vary. Users must review the selected provider's terms.
 - External-provider requests necessarily send selected audio or text outside the local device.

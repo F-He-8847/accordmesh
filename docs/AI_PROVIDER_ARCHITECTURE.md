@@ -6,8 +6,9 @@ AccordMesh business logic must not depend on OpenAI-specific request or response
 
 The official first implementation includes:
 
+- `OpenAIProvider`;
 - `MockProvider`;
-- `OpenAIProvider`.
+- `Test Provider Adapter`, which is Developer-diagnostics-only and UI-extension-test-only.
 
 Future community providers may include other cloud APIs, local transcription models, local language models, or OpenAI-compatible endpoints.
 
@@ -62,7 +63,7 @@ interface ProviderDefinition {
 }
 ```
 
-Do not assume every provider uses one API key. Support provider-defined fields such as endpoint, region, project ID, base URL, or local model path.
+Do not assume every provider uses one API key. Support provider-defined fields such as endpoint, region, project ID, base URL, local model path, or a provider-specific settings panel. The React Settings page should read display name, task-model mapping, and capabilities from provider definitions and the frontend provider UI registry rather than hardcoding OpenAI-only rows.
 
 ## 5. Unified domain output
 
@@ -90,7 +91,11 @@ MockProvider is the default development and demo provider. It must support deter
 - meeting minutes;
 - timeout, quota, authentication, and unsupported-capability states.
 
-## 8. OpenAIProvider
+## 8. Test Provider Adapter
+
+The Test Provider Adapter exists only to verify Provider Selector registration, task-model rendering, capability rendering, and settings-card rendering in Developer diagnostics mode. It must not process meetings. Runtime resolution and configuration validation fail closed with `ERR_TEST_PROVIDER_ADAPTER_UI_ONLY`. Public release UI hides it unless `VITE_ACCORDMESH_ENABLE_DEV_TOOLS=1` is set.
+
+## 9. OpenAIProvider
 
 OpenAIProvider must be isolated in `providers/openai/`.
 
@@ -106,7 +111,7 @@ Requirements:
 
 Do not make real API access mandatory for launching or demonstrating the app.
 
-## 9. Community provider guide hooks
+## 10. Community provider guide hooks
 
 Provide a clear extension guide explaining:
 
