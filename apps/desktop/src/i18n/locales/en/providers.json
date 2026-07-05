@@ -11,7 +11,15 @@
     "mockScenario": "Mock scenario",
     "transcriptionModel": "Transcription model",
     "analysisModel": "Analysis model",
-    "baseUrl": "Base URL"
+    "baseUrl": "Base URL",
+    "fileTranscriptionModel": "File transcription model",
+    "realtimeTranscriptionModel": "Real-time transcription model",
+    "textTranslationModel": "Text translation model",
+    "segmentUnderstandingModel": "Segment understanding model",
+    "meetingSynthesisModel": "Meeting synthesis model",
+    "communicationReviewModel": "Communication review model",
+    "comparisonReportModel": "Comparison report model",
+    "meetingMinutesModel": "Meeting minutes model"
   },
   "capabilities": "Capabilities",
   "capabilityLabels": {
@@ -32,7 +40,7 @@
   "unavailable": "Unavailable",
   "credentialsSaved": "Provider settings saved.",
   "apiKeyRetained": "Leave blank to retain the saved key",
-  "realApiOptional": "Use MockProvider for local testing, or configure another provider for meeting processing.",
+  "realApiOptional": "Configure OpenAI for meeting processing. Test providers are hidden in public release builds.",
   "configurationRequired": "Set up this provider before using it.",
   "configured": "Configured. Secrets are stored in the encrypted local vault.",
   "notConfigured": "Not configured",
@@ -46,8 +54,8 @@
     "unavailable": "Network unavailable",
     "unsupported": "Unsupported capability"
   },
-  "openAiDescription": "Choose the endpoint and models used by the OpenAI adapter.",
-  "configuredShort": "Configured",
+  "openAiDescription": "Use the official OpenAI provider. AccordMesh manages the endpoint and task-model defaults.",
+  "configuredShort": "Saved · not verified",
   "configurationRemoved": "Provider settings removed.",
   "capabilitiesDescription": "Available features depend on the provider and are checked before processing starts.",
   "removeDialogTitle": "Remove provider settings?",
@@ -57,15 +65,18 @@
     "credential_missing": "API key needed",
     "configuration_incomplete": "Setup incomplete",
     "configuration_invalid": "Setup needs attention",
-    "not_configured": "Not configured"
+    "not_configured": "Not configured",
+    "local_ready": "Available locally",
+    "saved_not_verified": "Saved · not verified",
+    "ui_test_only": "UI test only"
   },
   "notReady": "Not ready",
   "defaultProvider": "Default provider",
   "setAsDefault": "Set as default",
-  "mockDescription": "Deterministic local test provider that makes no external network calls.",
+  "mockDescription": "Deterministic local test provider for development, offline QA, and API-token cost control.",
   "apiKeyTitle": "API key",
   "apiKeySecurityDescription": "Saved keys are encrypted in the local vault and never shown again.",
-  "apiKeySaved": "Saved securely",
+  "apiKeySaved": "Saved in encrypted vault",
   "apiKeyMissing": "Not saved",
   "savedSecretNeverShown": "For security, the saved key cannot be displayed. Enter a new key only when you want to replace it.",
   "replaceApiKey": "New API key",
@@ -83,8 +94,32 @@
   "modelNotAssigned": "Managed by provider",
   "deleteApiKeyDialogTitle": "Delete the saved API key?",
   "deleteApiKeyDialogDescription": "The encrypted key will be removed. Endpoint and model settings will remain, but OpenAI processing will stay unavailable until you save a new key.",
-  "credentialsSaveFailed": "Provider settings could not be saved.",
+  "credentialsSaveFailed": "Provider settings could not be saved. Check the API key and try again.",
   "apiKeyRemoveFailed": "API key could not be deleted.",
   "configurationRemoveFailed": "Provider settings could not be removed.",
-  "configuredNotVerified": "Saved on this device. AccordMesh has not verified the connection or API key."
+  "configuredNotVerified": "Saved on this device. AccordMesh has not verified the connection or API key.",
+  "errorGuidance": {
+    "authentication": "Review or replace the encrypted credential. The provider may also be denying access to the selected model or capability.",
+    "configuration": "Review the saved endpoint and required settings before trying again.",
+    "rate_limit": "Check provider usage limits and account availability, then retry the failed run from the meeting History page.",
+    "network": "Check connectivity and provider availability, then retry the failed run from the meeting History page.",
+    "model": "Review the configured model name and whether the provider supports this action, then retry from History.",
+    "response_format": "The provider response was rejected safely because its format was not usable. Review the model and retry from History."
+  },
+  "openSettingsAction": "Open provider settings",
+  "openMeetingAction": "Open current meeting",
+  "officialEndpointTitle": "Official OpenAI endpoint managed by AccordMesh",
+  "officialEndpointDescription": "AccordMesh uses https://api.openai.com/v1 and the documented task-model defaults for the OpenAI provider. Custom or OpenAI-compatible endpoints will be handled as a separate provider type in a future release.",
+  "developerDiagnosticsNotice": "Developer diagnostics are available only when VITE_ACCORDMESH_ENABLE_DEV_TOOLS=1 is set.",
+  "legacyCustomEndpointNotice": "This vault contains a legacy custom OpenAI-compatible endpoint. It will remain available for existing processing until you replace the OpenAI key or remove the configuration. Future custom endpoints will be managed by a separate provider type.",
+  "testAdapter": {
+    "displayName": "Test Provider Adapter",
+    "description": "UI extension test only. This adapter verifies provider registration, task model display, and capability rendering. It does not process meetings.",
+    "uiOnlyNotice": "This adapter is visible only in Developer diagnostics mode. It is for UI extension testing and fails closed for real meeting processing."
+  },
+  "activeProvider": "Active provider",
+  "activeProviderDescription": "Choose which provider definition to inspect on this page. Public release builds show only production providers.",
+  "providerAdapterGenericDescription": "Provider adapter registered for this build.",
+  "uiExtensionTestOnly": "UI test only",
+  "mockDeveloperOnlyNotice": "MockProvider is visible only in Developer diagnostics mode. Use the Developer diagnostics page to choose deterministic scenarios for offline QA."
 }

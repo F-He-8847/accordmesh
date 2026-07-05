@@ -36,7 +36,7 @@
     "language": "Language & Translation",
     "provider": "AI provider",
     "security": "Security",
-    "advanced": "Advanced",
+    "advanced": "Developer diagnostics",
     "about": "About"
   },
   "generalDescription": "Choose the default provider and automatic-lock behavior.",
@@ -59,17 +59,26 @@
   "securityDescription": "Review local storage and actions that permanently delete data.",
   "dangerZoneTitle": "Danger zone",
   "dangerZoneDescription": "Resetting the encrypted vault permanently deletes AccordMesh-managed local data on this device. Files previously exported outside AccordMesh are not deleted.",
-  "advancedTitle": "Advanced",
-  "advancedDescription": "Configure MockProvider for local development and testing.",
-  "mockDescription": "Use synthetic provider results without external network calls.",
-  "mockScenarioHint": "This scenario applies to future MockProvider tasks.",
-  "mockSavedFeedback": "MockProvider scenario saved.",
+  "advancedTitle": "Developer diagnostics",
+  "advancedDescription": "For local development and QA only. Hidden in public release builds unless VITE_ACCORDMESH_ENABLE_DEV_TOOLS=1 is set.",
+  "mockDescription": "Use deterministic MockProvider scenarios without external network calls or API token cost.",
+  "mockScenarioHint": "This test scenario applies only to future MockProvider tasks in developer diagnostics builds.",
+  "mockSavedFeedback": "MockProvider test scenario saved.",
   "aboutTitle": "About AccordMesh",
   "aboutDescription": "Product information and the local-first data model.",
   "version": "Version {{version}}",
   "localFirstTitle": "Local-first by default",
   "localFirstDescription": "AccordMesh keeps application data on this device by default. Sensitive payloads and managed media are encrypted; operational metadata remains in local SQLite. Content leaves the device only when you explicitly send it to a configured provider.",
   "saveFailedFeedback": "Settings could not be saved.",
-  "mockSaveFailedFeedback": "MockProvider scenario could not be saved.",
-  "resetFailedFeedback": "The local vault could not be reset."
+  "mockSaveFailedFeedback": "MockProvider test scenario could not be saved.",
+  "resetFailedFeedback": "The local vault could not be reset.",
+  "mediaRuntimeTitle": "Bundled media runtime",
+  "mediaRuntimeChecking": "Checking the bundled FFmpeg and FFprobe runtime…",
+  "mediaRuntimeReady": "FFmpeg {{version}} is bundled for {{target}} and passed the integrity check.",
+  "mediaRuntimeUnavailable": "The bundled FFmpeg {{version}} runtime is unavailable or failed the integrity check. Media import is disabled until the verified runtime is restored.",
+  "title": "Settings",
+  "units": {
+    "px": "px",
+    "percent": "%"
+  }
 }

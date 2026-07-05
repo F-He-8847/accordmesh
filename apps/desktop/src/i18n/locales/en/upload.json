@@ -21,5 +21,9 @@
   "chooseRecording": "Choose audio or video recording",
   "replaceRecording": "Choose a different recording",
   "recordingFileOnly": "Choose an audio or video recording.",
-  "singleRecordingNotice": "Attach one audio or video recording to a completed live meeting. Each meeting can have one attached recording."
+  "singleRecordingNotice": "Attach one audio or video recording to a completed live meeting. Each meeting can have one attached recording.",
+  "titleCharacterCount": "{{count}} / {{max}} characters",
+  "browseFiles": "Browse files",
+  "filePickerHint": "Audio, video, TXT, SRT, or VTT. The selected file is copied into the encrypted local vault.",
+  "recordingPickerHint": "Audio or video recording. The source remains encrypted in the local vault."
 }

@@ -27,6 +27,9 @@ enum TranscriptionContract {
     WhisperVerboseSegments,
 }
 
+const DEFAULT_OPENAI_BASE_URL: &str = "https://api.openai.com/v1";
+const LEGACY_OPENAI_BASE_URL: &str = "https://api.openai.com/v3";
+
 pub fn definition() -> ProviderDefinition {
     let mut capabilities = full_capabilities(&[
         "mp3", "mp4", "mpeg", "mpga", "m4a", "wav", "webm", "txt", "srt", "vtt",
@@ -50,7 +53,7 @@ pub fn definition() -> ProviderDefinition {
                 field_type: "text".into(),
                 required: true,
                 secret: false,
-                default_value: Some("https://api.openai.com/v1".into()),
+                default_value: Some(DEFAULT_OPENAI_BASE_URL.into()),
             },
             ProviderField {
                 id: "transcriptionModel".into(),
@@ -111,6 +114,55 @@ pub fn validate_configuration(value: &Value) -> ProviderResult<()> {
     configuration_parts(value).map(|_| ())
 }
 
+pub fn migrate_legacy_configuration(value: &mut Value) -> bool {
+    let Some(object) = value.as_object_mut() else {
+        return false;
+    };
+    let Some(base_url) = object.get("baseUrl").and_then(Value::as_str) else {
+        return false;
+    };
+    if base_url.trim().trim_end_matches('/') != LEGACY_OPENAI_BASE_URL {
+        return false;
+    }
+    object.insert(
+        "baseUrl".into(),
+        Value::String(DEFAULT_OPENAI_BASE_URL.into()),
+    );
+    true
+}
+
+fn normalized_base_url(value: Option<&str>) -> ProviderResult<String> {
+    let base_url = value
+        .unwrap_or(DEFAULT_OPENAI_BASE_URL)
+        .trim()
+        .trim_end_matches('/')
+        .to_owned();
+    if base_url.is_empty() {
+        return Err("ERR_PROVIDER_CONFIG");
+    }
+    let parsed = Url::parse(&base_url).map_err(|_| "ERR_PROVIDER_CONFIG")?;
+    if !parsed.username().is_empty()
+        || parsed.password().is_some()
+        || parsed.query().is_some()
+        || parsed.fragment().is_some()
+    {
+        return Err("ERR_PROVIDER_CONFIG");
+    }
+    let host = parsed.host_str().ok_or("ERR_PROVIDER_CONFIG")?;
+    let local_http = parsed.scheme() == "http" && matches!(host, "127.0.0.1" | "localhost" | "::1");
+    if !(parsed.scheme() == "https" || local_http) {
+        return Err("ERR_PROVIDER_CONFIG");
+    }
+    if host.eq_ignore_ascii_case("api.openai.com")
+        && (parsed.scheme() != "https"
+            || parsed.port().is_some()
+            || parsed.path().trim_end_matches('/') != "/v1")
+    {
+        return Err("ERR_PROVIDER_OPENAI_BASE_URL");
+    }
+    Ok(base_url)
+}
+
 fn configuration_parts(value: &Value) -> ProviderResult<(String, String, String, String)> {
     let api_key = value
         .get("apiKey")
@@ -119,13 +171,7 @@ fn configuration_parts(value: &Value) -> ProviderResult<(String, String, String,
         .filter(|value| !value.is_empty())
         .ok_or("ERR_PROVIDER_NOT_CONFIGURED")?
         .to_owned();
-    let base_url = value
-        .get("baseUrl")
-        .and_then(Value::as_str)
-        .unwrap_or("https://api.openai.com/v1")
-        .trim()
-        .trim_end_matches('/')
-        .to_owned();
+    let base_url = normalized_base_url(value.get("baseUrl").and_then(Value::as_str))?;
     let transcription_model = value
         .get("transcriptionModel")
         .and_then(Value::as_str)
@@ -142,22 +188,6 @@ fn configuration_parts(value: &Value) -> ProviderResult<(String, String, String,
         return Err("ERR_PROVIDER_CONFIG");
     }
     transcription_contract(&transcription_model)?;
-    let parsed = Url::parse(&base_url).map_err(|_| "ERR_PROVIDER_CONFIG")?;
-    if !parsed.username().is_empty()
-        || parsed.password().is_some()
-        || parsed.query().is_some()
-        || parsed.fragment().is_some()
-    {
-        return Err("ERR_PROVIDER_CONFIG");
-    }
-    let local_http = parsed.scheme() == "http"
-        && matches!(
-            parsed.host_str(),
-            Some("127.0.0.1") | Some("localhost") | Some("::1")
-        );
-    if parsed.host_str().is_none() || !(parsed.scheme() == "https" || local_http) {
-        return Err("ERR_PROVIDER_CONFIG");
-    }
     Client::builder()
         .connect_timeout(Duration::from_secs(15))
         .timeout(Duration::from_secs(120))
@@ -710,4 +740,38 @@ fn prompt_version(kind: &str) -> &'static str {
 
 fn schema_version(kind: &str) -> &'static str {
     prompt_version(kind)
+}
+
+#[cfg(test)]
+mod alpha2_build3_base_url_tests {
+    use super::*;
+
+    #[test]
+    fn official_openai_host_requires_v1() {
+        assert!(normalized_base_url(Some("https://api.openai.com/v1")).is_ok());
+        assert!(normalized_base_url(Some("https://api.openai.com/v1/")).is_ok());
+        assert_eq!(
+            normalized_base_url(Some("https://api.openai.com/v3")),
+            Err("ERR_PROVIDER_OPENAI_BASE_URL")
+        );
+        assert_eq!(
+            normalized_base_url(Some("https://api.openai.com/custom")),
+            Err("ERR_PROVIDER_OPENAI_BASE_URL")
+        );
+    }
+
+    #[test]
+    fn custom_and_local_provider_endpoints_remain_supported() {
+        assert!(normalized_base_url(Some("https://provider.example/v3")).is_ok());
+        assert!(normalized_base_url(Some("http://localhost:11434/v1")).is_ok());
+        assert!(normalized_base_url(Some("http://127.0.0.1:8080/v1")).is_ok());
+    }
+
+    #[test]
+    fn exact_legacy_openai_endpoint_is_migrated() {
+        let mut value = json!({"baseUrl":"https://api.openai.com/v3/","apiKey":"test"});
+        assert!(migrate_legacy_configuration(&mut value));
+        assert_eq!(value["baseUrl"], DEFAULT_OPENAI_BASE_URL);
+        assert!(!migrate_legacy_configuration(&mut value));
+    }
 }

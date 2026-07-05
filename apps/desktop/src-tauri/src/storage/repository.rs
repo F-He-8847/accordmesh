@@ -417,6 +417,16 @@ impl Repository {
         self.conn()?.execute("update media_assets set processing_status=?1, duration_ms=coalesce(?2,duration_ms) where id=?3", params![status, duration_ms, asset_id])?;
         Ok(())
     }
+    pub fn finalize_incomplete_media_for_job(
+        &self,
+        job_id: &str,
+        status: &str,
+    ) -> rusqlite::Result<usize> {
+        self.conn()?.execute(
+            "update media_assets set processing_status=?1 where import_job_id=?2 and processing_status not in ('ready','attached','failed')",
+            params![status, job_id],
+        )
+    }
 
     pub fn delete_media_asset(&self, asset_id: &str) -> rusqlite::Result<()> {
         let path: Option<String> = self

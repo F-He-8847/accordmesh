@@ -74,6 +74,11 @@ impl From<&'static str> for AppError {
     }
 }
 
+struct ActiveSoundCheckState {
+    id: u64,
+    control: audio::SoundCheckControl,
+}
+
 struct AppCoreState {
     data_dir: PathBuf,
     master_key: Option<Zeroizing<Vec<u8>>>,
@@ -83,6 +88,8 @@ struct AppCoreState {
     locking: bool,
     resetting: bool,
     operations_in_flight: usize,
+    active_sound_check: Option<ActiveSoundCheckState>,
+    next_sound_check_id: u64,
 }
 
 impl Default for AppCoreState {
@@ -96,6 +103,8 @@ impl Default for AppCoreState {
             locking: false,
             resetting: false,
             operations_in_flight: 0,
+            active_sound_check: None,
+            next_sound_check_id: 1,
         }
     }
 }
@@ -121,7 +130,18 @@ impl AppCoreState {
             .clone()
             .ok_or(AppError::Stable("ERR_LOCKED"))
     }
+    fn stop_active_sound_check(&mut self) -> Result<(), AppError> {
+        if let Some(active) = self.active_sound_check.take() {
+            if let Err(code) = active.control.cancel_and_wait() {
+                self.active_sound_check = Some(active);
+                return Err(AppError::Stable(code));
+            }
+        }
+        Ok(())
+    }
+
     fn clear_sensitive_memory(&mut self) {
+        let _ = self.stop_active_sound_check();
         self.selections.clear();
         if let Some(mut key) = self.master_key.take() {
             key.zeroize();
@@ -233,10 +253,28 @@ struct RegenerateInput {
     source_artifact_ids: Vec<String>,
 }
 
+const PROJECT_TITLE_MAX_CHARS: usize = 120;
+
+fn normalized_project_title(value: Option<&str>) -> Result<String, AppError> {
+    let title = value
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .ok_or(AppError::Stable("ERR_TITLE_REQUIRED"))?;
+    if title.chars().count() > PROJECT_TITLE_MAX_CHARS {
+        return Err(AppError::Stable("ERR_TITLE_TOO_LONG"));
+    }
+    Ok(title.to_owned())
+}
+
 #[tauri::command]
 fn setup_status(state: State<Mutex<AppCoreState>>) -> Result<SetupStatus, AppError> {
     let state = state.lock().map_err(|_| AppError::Stable("ERR_STATE"))?;
     Ok(setup_status_from_state(&state))
+}
+
+#[tauri::command]
+async fn media_runtime_status() -> media::MediaRuntimeStatus {
+    media::media_runtime_status().await
 }
 
 #[tauri::command]
@@ -296,6 +334,7 @@ fn unlock(
             .map_err(|_| AppError::Stable("ERR_INVALID_PASSWORD"))?;
         repo = state.repo()?;
         repo.ensure_legacy_keys(&master)?;
+        migrate_provider_configuration_defaults(&repo, &master)?;
         realtime::recover_spool_jobs(&repo)?;
         resumable = repo.resumable_job_ids()?;
         state.master_key = Some(master.clone());
@@ -340,6 +379,7 @@ fn lock(app: AppHandle, state: State<Mutex<AppCoreState>>) -> Result<SetupStatus
         state
             .realtime_sessions
             .retain(|_, runtime| !runtime.is_completed());
+        state.stop_active_sound_check()?;
         if state
             .realtime_sessions
             .values()
@@ -393,14 +433,16 @@ fn reset_vault_status_from_state(state: &AppCoreState) -> ResetVaultStatus {
         .count();
     let active_jobs = jobs::active_runtime_count(&state.job_runtimes);
     let recovery_required = reset::recovery_pending(&state.data_dir);
+    let operations_in_flight =
+        state.operations_in_flight + usize::from(state.active_sound_check.is_some());
     let active_work_blocks_reset =
         active_realtime_sessions + cleanup_pending_sessions + active_jobs > 0
-            || state.operations_in_flight > 0;
+            || operations_in_flight > 0;
     ResetVaultStatus {
         active_realtime_sessions,
         cleanup_pending_sessions,
         active_jobs,
-        operations_in_flight: state.operations_in_flight,
+        operations_in_flight,
         reset_in_progress: state.resetting,
         recovery_required,
         can_start: !state.locking
@@ -706,6 +748,28 @@ fn remove_provider_secret_value(
     }
 }
 
+fn migrate_provider_configuration_defaults(
+    repo: &Repository,
+    master_key: &[u8],
+) -> Result<(), AppError> {
+    let Some(mut configuration) = repo.provider_configuration("openai", master_key)? else {
+        return Ok(());
+    };
+    if !providers::openai::migrate_legacy_configuration(&mut configuration) {
+        return Ok(());
+    }
+    let mut fields = configuration
+        .as_object()
+        .ok_or(AppError::Stable("ERR_PROVIDER_CONFIG"))?
+        .keys()
+        .cloned()
+        .collect::<Vec<_>>();
+    fields.sort();
+    let sealed = crypto::seal(master_key, &serde_json::to_vec(&configuration)?)?;
+    repo.upsert_provider_configuration("openai", &sealed, &fields)?;
+    Ok(())
+}
+
 fn provider_configuration_statuses(
     repo: &Repository,
     master_key: &[u8],
@@ -881,12 +945,61 @@ async fn sound_check(
     device_id: String,
     state: State<'_, Mutex<AppCoreState>>,
 ) -> Result<audio::SoundCheck, AppError> {
-    begin_operation(&state)?;
-    let result = audio::sound_check(&device_id)
+    let (sound_check_id, started) = {
+        let mut state = state.lock().map_err(|_| AppError::Stable("ERR_STATE"))?;
+        state.key()?;
+        if state.active_sound_check.is_some() {
+            return Err(AppError::Stable("ERR_AUDIO_CHECK_BUSY"));
+        }
+        let started = audio::start_sound_check(&device_id).map_err(AppError::Stable)?;
+        let sound_check_id = state.next_sound_check_id;
+        state.next_sound_check_id = state.next_sound_check_id.saturating_add(1);
+        state.active_sound_check = Some(ActiveSoundCheckState {
+            id: sound_check_id,
+            control: started.control(),
+        });
+        (sound_check_id, started)
+    };
+
+    let result = audio::finish_sound_check(started)
         .await
         .map_err(AppError::Stable);
-    finish_operation(&state);
+    if let Ok(mut state) = state.lock() {
+        if state
+            .active_sound_check
+            .as_ref()
+            .is_some_and(|active| active.id == sound_check_id)
+        {
+            state.active_sound_check = None;
+        }
+    }
     result
+}
+
+#[tauri::command]
+async fn cancel_sound_check(state: State<'_, Mutex<AppCoreState>>) -> Result<(), AppError> {
+    let active = {
+        let state = state.lock().map_err(|_| AppError::Stable("ERR_STATE"))?;
+        state
+            .active_sound_check
+            .as_ref()
+            .map(|active| (active.id, active.control.clone()))
+    };
+    if let Some((sound_check_id, control)) = active {
+        tokio::task::spawn_blocking(move || control.cancel_and_wait())
+            .await
+            .map_err(|_| AppError::Stable("ERR_AUDIO_RELEASE_TIMEOUT"))?
+            .map_err(AppError::Stable)?;
+        let mut state = state.lock().map_err(|_| AppError::Stable("ERR_STATE"))?;
+        if state
+            .active_sound_check
+            .as_ref()
+            .is_some_and(|active| active.id == sound_check_id)
+        {
+            state.active_sound_check = None;
+        }
+    }
+    Ok(())
 }
 #[tauri::command]
 fn system_audio_status(
@@ -992,13 +1105,9 @@ fn create_realtime_project(
                 &[input.analysis_output_language.as_str()],
             )
             .map_err(AppError::Stable)?;
-            let title = input
-                .title
-                .as_deref()
-                .filter(|v| !v.trim().is_empty())
-                .ok_or(AppError::Stable("ERR_TITLE_REQUIRED"))?;
+            let title = normalized_project_title(input.title.as_deref())?;
             project =
-                repo.create_project(title, input.mode.into(), ProjectStatus::Active, &master)?;
+                repo.create_project(&title, input.mode.into(), ProjectStatus::Active, &master)?;
             session = repo.create_realtime_session(&project.id, input.mode)?;
         }
         let mut runtime = match realtime::start(
@@ -1270,13 +1379,9 @@ async fn create_upload_project(
             &input.minutes_output_language,
         )?;
         let queued = copy_selections(&repo, selections).await?;
-        let title = input
-            .title
-            .as_deref()
-            .filter(|value| !value.trim().is_empty())
-            .ok_or(AppError::Stable("ERR_TITLE_REQUIRED"))?;
+        let title = normalized_project_title(input.title.as_deref())?;
         let project = repo.create_project(
-            title,
+            &title,
             ProjectOrigin::UploadOnly,
             ProjectStatus::Processing,
             &master,
@@ -1434,12 +1539,10 @@ fn rename_project(
     title: String,
     state: State<Mutex<AppCoreState>>,
 ) -> Result<MeetingProject, AppError> {
-    if title.trim().is_empty() {
-        return Err(AppError::Stable("ERR_TITLE_REQUIRED"));
-    }
+    let title = normalized_project_title(Some(&title))?;
     let state = state.lock().map_err(|_| AppError::Stable("ERR_STATE"))?;
     state.key()?;
-    Ok(state.repo()?.rename_project(&project_id, title.trim())?)
+    Ok(state.repo()?.rename_project(&project_id, &title)?)
 }
 #[tauri::command]
 fn delete_project(project_id: String, state: State<Mutex<AppCoreState>>) -> Result<(), AppError> {
@@ -1885,6 +1988,8 @@ fn fail_queued_upload(
 ) -> AppError {
     repo.update_job(job_id, "failed", "failed", 0.0, Some(code))
         .ok();
+    repo.finalize_incomplete_media_for_job(job_id, if attach { "attached" } else { "failed" })
+        .ok();
     repo.set_project_status(
         project_id,
         if attach {
@@ -1951,8 +2056,20 @@ pub fn run() {
                 .map_err(|_| std::io::Error::new(std::io::ErrorKind::Other, "database"))?;
             Ok(())
         })
+        .on_window_event(|window, event| {
+            if matches!(
+                event,
+                tauri::WindowEvent::CloseRequested { .. } | tauri::WindowEvent::Destroyed
+            ) {
+                let state = window.state::<Mutex<AppCoreState>>();
+                if let Ok(mut state) = state.lock() {
+                    let _ = state.stop_active_sound_check();
+                };
+            }
+        })
         .invoke_handler(tauri::generate_handler![
             setup_status,
+            media_runtime_status,
             create_vault,
             unlock,
             lock,
@@ -1968,6 +2085,7 @@ pub fn run() {
             select_files,
             audio_devices,
             sound_check,
+            cancel_sound_check,
             system_audio_status,
             request_system_audio_permission,
             open_system_audio_settings,

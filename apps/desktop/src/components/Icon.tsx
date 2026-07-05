@@ -23,7 +23,9 @@ export type IconName =
   | "stop"
   | "copy"
   | "close"
-  | "shield";
+  | "shield"
+  | "eye"
+  | "eyeOff";
 
 interface Props extends Omit<SVGProps<SVGSVGElement>, "name"> {
   name: IconName;
@@ -113,6 +115,22 @@ export function Icon({ name, size = 18, ...props }: Props) {
         {name === "shield" ? <path d="M12 3 5 6v5c0 4.6 2.7 8.2 7 10 4.3-1.8 7-5.4 7-10V6l-7-3Z" /> : null}
         <rect x="7" y="10" width="10" height="9" rx="2" />
         <path d="M9 10V7a3 3 0 0 1 6 0v3" />
+      </svg>
+    );
+  }
+
+
+  if (name === "eye" || name === "eyeOff") {
+    return (
+      <svg {...shared}>
+        <path d="M2.5 12s3.5-6 9.5-6 9.5 6 9.5 6-3.5 6-9.5 6-9.5-6-9.5-6Z" />
+        {name === "eye" ? <circle cx="12" cy="12" r="2.8" /> : null}
+        {name === "eyeOff" ? (
+          <>
+            <path d="M9.8 9.8a3 3 0 0 0 4.4 4.4" />
+            <path d="M4 4l16 16" />
+          </>
+        ) : null}
       </svg>
     );
   }

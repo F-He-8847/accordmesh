@@ -18,7 +18,7 @@ Unknown licenses fail the release review until resolved.
 
 ## FFmpeg
 
-The current source repository invokes user-installed FFmpeg/FFprobe and does not bundle an FFmpeg binary. If a future installer bundles FFmpeg, maintainers must record the exact build configuration and satisfy the corresponding LGPL/GPL obligations. Builds using nonfree components must not be distributed without a separate legal review.
+FFmpeg and FFprobe binaries are not committed to the source repository. Installable release construction may bundle a separately audited runtime only when maintainers record the official source version and signature, exact configure output, target, binary hashes, linked dependencies, notices, and corresponding source materials. The approved release path must keep GPL and nonfree components disabled unless a separate legal and product review explicitly changes that decision.
 
 ## Assets
 

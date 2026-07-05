@@ -100,5 +100,11 @@
   "ERR_PROVIDER_MODEL_INVALID": "The selected model identifier is invalid.",
   "ERR_PROVIDER_MODEL_UNSUPPORTED": "The selected provider cannot use that model for this result.",
   "ERR_RESET_FAILED_PRESERVED": "The vault could not be reset. Existing data was preserved and AccordMesh was locked. Unlock again before retrying.",
-  "ERR_RESET_RECOVERY_REQUIRED": "The reset did not finish safely. AccordMesh is locked. Restart the app so it can recover before trying again."
+  "ERR_RESET_RECOVERY_REQUIRED": "The reset did not finish safely. AccordMesh is locked. Restart the app so it can recover before trying again.",
+  "ERR_PROVIDER_OPENAI_BASE_URL": "For the official OpenAI service, use https://api.openai.com/v1. Custom provider endpoints remain supported.",
+  "ERR_AUDIO_CHECK_BUSY": "A microphone Sound Check is already running.",
+  "ERR_AUDIO_CHECK_CANCELLED": "Sound Check was cancelled.",
+  "ERR_AUDIO_RELEASE_TIMEOUT": "AccordMesh could not confirm that the microphone was released. Close other audio tasks and try again.",
+  "ERR_TITLE_TOO_LONG": "Meeting titles can contain up to 120 characters.",
+  "ERR_TEST_PROVIDER_ADAPTER_UI_ONLY": "The Test Provider Adapter is only for UI extension testing and cannot process meetings."
 }

@@ -1,5 +1,5 @@
 use std::io::Read;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{mpsc as std_mpsc, Arc, Mutex};
@@ -261,25 +261,59 @@ fn unavailable(code: &str, permission_status: &str, requires_restart: bool) -> S
 }
 
 fn helper_path() -> Option<PathBuf> {
-    if let Some(path) = std::env::var_os("ACCORDMESH_SYSTEM_AUDIO_HELPER").map(PathBuf::from) {
-        if path.is_file() {
-            return Some(path);
-        }
+    #[cfg(test)]
+    if let Some(path) = std::env::var_os("ACCORDMESH_TEST_SYSTEM_AUDIO_HELPER").map(PathBuf::from) {
+        return path.is_file().then_some(path);
     }
-    let mut candidates = Vec::new();
-    if let Ok(executable) = std::env::current_exe() {
-        if let Some(parent) = executable.parent() {
-            candidates.push(parent.join("accordmesh-system-audio"));
-            candidates.push(parent.join("../Resources/accordmesh-system-audio"));
-        }
-    }
-    candidates.push(
-        PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+
+    #[cfg(debug_assertions)]
+    {
+        let path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
             .join("binaries")
             .join(format!(
                 "accordmesh-system-audio-{}",
                 env!("ACCORDMESH_TARGET_TRIPLE")
-            )),
-    );
-    candidates.into_iter().find(|path| path.is_file())
+            ));
+        return path.is_file().then_some(path);
+    }
+
+    #[cfg(not(debug_assertions))]
+    {
+        let executable = std::env::current_exe().ok()?;
+        let helper = release_helper_candidate(&executable)?;
+        helper.is_file().then_some(helper)
+    }
+}
+
+fn release_helper_candidate(executable: &Path) -> Option<PathBuf> {
+    let directory = executable.parent()?;
+    if directory.file_name().and_then(|value| value.to_str()) != Some("MacOS") {
+        return None;
+    }
+    let contents = directory.parent()?;
+    if contents.file_name().and_then(|value| value.to_str()) != Some("Contents") {
+        return None;
+    }
+    let app = contents.parent()?;
+    if app.extension().and_then(|value| value.to_str()) != Some("app") {
+        return None;
+    }
+    Some(directory.join("accordmesh-system-audio"))
+}
+
+#[cfg(test)]
+mod helper_path_tests {
+    use super::*;
+
+    #[test]
+    fn release_helper_is_only_a_sibling_inside_app_contents_macos() {
+        let valid = Path::new("/Applications/AccordMesh.app/Contents/MacOS/accordmesh");
+        let expected =
+            PathBuf::from("/Applications/AccordMesh.app/Contents/MacOS/accordmesh-system-audio");
+        assert_eq!(release_helper_candidate(valid), Some(expected));
+        assert_eq!(
+            release_helper_candidate(Path::new("/usr/local/bin/accordmesh")),
+            None,
+        );
+    }
 }

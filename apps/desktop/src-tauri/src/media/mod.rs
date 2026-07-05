@@ -1,3 +1,7 @@
+mod runtime;
+
+pub use runtime::MediaRuntimeStatus;
+
 use std::collections::HashMap;
 use std::ffi::OsString;
 use std::path::{Path, PathBuf};
@@ -495,24 +499,16 @@ pub(crate) struct MediaProcessPolicy {
     pub output_limit: usize,
 }
 
-impl Default for MediaProcessPolicy {
-    fn default() -> Self {
-        Self {
-            ffmpeg_path: media_tool_path("ACCORDMESH_TEST_FFMPEG_BIN", "ffmpeg"),
-            ffprobe_path: media_tool_path("ACCORDMESH_TEST_FFPROBE_BIN", "ffprobe"),
+impl MediaProcessPolicy {
+    fn bundled() -> Result<Self, &'static str> {
+        let runtime = runtime::resolve()?;
+        Ok(Self {
+            ffmpeg_path: runtime.ffmpeg_path,
+            ffprobe_path: runtime.ffprobe_path,
             timeout: DEFAULT_MEDIA_PROCESS_TIMEOUT,
             output_limit: DEFAULT_MEDIA_PROCESS_OUTPUT_LIMIT,
-        }
+        })
     }
-}
-
-fn media_tool_path(test_variable: &str, fallback: &str) -> PathBuf {
-    #[cfg(test)]
-    if let Some(value) = std::env::var_os(test_variable) {
-        return PathBuf::from(value);
-    }
-    let _ = test_variable;
-    PathBuf::from(fallback)
 }
 
 #[derive(Clone)]
@@ -542,14 +538,8 @@ pub async fn prepare_media_cancellable(
     temp_root: &Path,
     cancelled: &Arc<AtomicBool>,
 ) -> Result<(Vec<PreparedChunk>, Option<i64>), &'static str> {
-    prepare_media_with_policy(
-        path,
-        kind,
-        temp_root,
-        cancelled,
-        &MediaProcessPolicy::default(),
-    )
-    .await
+    let policy = MediaProcessPolicy::bundled()?;
+    prepare_media_with_policy(path, kind, temp_root, cancelled, &policy).await
 }
 
 pub(crate) async fn prepare_media_with_policy(
@@ -689,7 +679,6 @@ pub(crate) async fn prepare_media_with_policy(
     Ok((chunks, Some(duration)))
 }
 
-#[cfg(test)]
 pub(crate) async fn media_tool_versions_with_policy(
     cancelled: &Arc<AtomicBool>,
     policy: &MediaProcessPolicy,
@@ -717,7 +706,6 @@ pub(crate) async fn media_tool_versions_with_policy(
     Ok((ffmpeg, ffprobe))
 }
 
-#[cfg(test)]
 fn first_output_line(bytes: Vec<u8>, prefix: &str) -> Result<String, &'static str> {
     let text = String::from_utf8(bytes).map_err(|_| "ERR_MEDIA_TOOL_VERSION")?;
     let line = text.lines().next().unwrap_or("").trim();
@@ -725,6 +713,46 @@ fn first_output_line(bytes: Vec<u8>, prefix: &str) -> Result<String, &'static st
         return Err("ERR_MEDIA_TOOL_VERSION");
     }
     Ok(line.to_string())
+}
+
+pub async fn media_runtime_status() -> MediaRuntimeStatus {
+    let (mut status, resolved) = runtime::initial_status();
+    let Some(runtime) = resolved else {
+        return status;
+    };
+    let policy = MediaProcessPolicy {
+        ffmpeg_path: runtime.ffmpeg_path,
+        ffprobe_path: runtime.ffprobe_path,
+        timeout: Duration::from_secs(10),
+        output_limit: 16 * 1024,
+    };
+    let cancelled = Arc::new(AtomicBool::new(false));
+    match media_tool_versions_with_policy(&cancelled, &policy).await {
+        Ok((ffmpeg, ffprobe)) => {
+            let expected = format!("ffmpeg version {}", status.expected_version);
+            let expected_probe = format!("ffprobe version {}", status.expected_version);
+            status.ffmpeg.version = Some(ffmpeg.clone());
+            status.ffprobe.version = Some(ffprobe.clone());
+            if !ffmpeg.starts_with(&expected) {
+                status.available = false;
+                status.ffmpeg.available = false;
+                status.ffmpeg.error_code = Some("ERR_MEDIA_RUNTIME_VERSION".into());
+            }
+            if !ffprobe.starts_with(&expected_probe) {
+                status.available = false;
+                status.ffprobe.available = false;
+                status.ffprobe.error_code = Some("ERR_MEDIA_RUNTIME_VERSION".into());
+            }
+        }
+        Err(code) => {
+            status.available = false;
+            status.ffmpeg.available = false;
+            status.ffprobe.available = false;
+            status.ffmpeg.error_code = Some(code.into());
+            status.ffprobe.error_code = Some(code.into());
+        }
+    }
+    status
 }
 
 async fn ensure_audio_track(

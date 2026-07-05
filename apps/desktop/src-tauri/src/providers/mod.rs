@@ -1,6 +1,7 @@
 pub mod mock;
 pub mod openai;
 pub mod registry;
+pub mod test_adapter;
 
 use std::path::Path;
 use std::sync::atomic::AtomicBool;

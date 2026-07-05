@@ -25,5 +25,7 @@
   "renameDialogDescription": "Only the title will change. The transcript, files, and generated results stay the same.",
   "deleteDialogTitle": "Delete meeting permanently?",
   "projectCountSingle": "meeting",
-  "projectCountPlural": "meetings"
+  "projectCountPlural": "meetings",
+  "titleCharacterCount": "{{count}} / {{max}} characters",
+  "deleteDialogDescription": "This permanently removes the meeting and its AccordMesh-managed local data."
 }

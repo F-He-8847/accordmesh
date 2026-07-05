@@ -18,6 +18,8 @@ This checklist applies to every public source or binary release.
 - [ ] `cargo fmt --manifest-path apps/desktop/src-tauri/Cargo.toml -- --check` passes.
 - [ ] `cargo check --locked --manifest-path apps/desktop/src-tauri/Cargo.toml` passes.
 - [ ] `cargo test --locked --manifest-path apps/desktop/src-tauri/Cargo.toml` passes.
+- [ ] Public release builds are created without `VITE_ACCORDMESH_ENABLE_DEV_TOOLS=1`; MockProvider, Test Provider Adapter, Mock scenario, and Developer diagnostics are not visible in the normal UI.
+- [ ] If a diagnostic build is produced, its release notes clearly state that `VITE_ACCORDMESH_ENABLE_DEV_TOOLS=1` was used and that MockProvider is for development and QA only, and Test Provider Adapter is UI-extension-test-only.
 - [ ] Platform-specific manual checks use fictional data and an isolated local vault.
 
 ## Security and privacy

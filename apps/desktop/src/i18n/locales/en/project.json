@@ -141,7 +141,9 @@
   "mediaStatus": {
     "processing": "Processing",
     "transcribing": "Transcribing",
-    "ready": "Ready"
+    "ready": "Ready",
+    "attached": "Attached · processing needs attention",
+    "failed": "Processing failed"
   },
   "evidenceDetails": "Evidence details",
   "additionalTechnicalDetails": "Additional technical details",
@@ -217,5 +219,22 @@
     "completed": "Completed",
     "attention": "Needs attention",
     "active": "In progress"
+  },
+  "moreWorkspaceTabs": "More workspace pages",
+  "attachedProcessingFailedHint": "The source file remains attached. Open History to review the error or retry processing.",
+  "failedProcessingFileHint": "The file is preserved in the encrypted vault. Open History to review the error or retry processing.",
+  "titleCharacterCount": "{{count}} / {{max}} characters",
+  "noTranscriptEvidenceTitle": "Transcript not available yet",
+  "noMaterialsTitle": "No source files yet",
+  "noGenerationHistoryTitle": "No processing history yet",
+  "noArtifactsTitle": "No result has been generated yet",
+  "noUsableArtifactsTitle": "No readable result is available",
+  "counts": {
+    "transcriptSegments": "{{count}} transcript segments",
+    "sourceFiles": "{{count}} source files",
+    "generatedResults": "{{count}} generated results",
+    "minutesDrafts": "{{count}} minutes drafts",
+    "comparisonReports": "{{count}} comparison reports",
+    "processingRuns": "{{count}} processing runs"
   }
 }

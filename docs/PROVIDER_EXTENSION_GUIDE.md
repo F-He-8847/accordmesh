@@ -7,3 +7,10 @@ Declare only capabilities with real execution paths. Resolve credentials through
 Consume versioned prompts from `packages/prompts` and matching schemas from `packages/schemas`. Every attempt must create a `GenerationRun`; validate payloads before immutable artifact persistence and record `ERR_PROVIDER_SCHEMA` on invalid output. Map transport, authentication, quota, timeout, availability, parsing, and capability failures to stable AccordMesh codes.
 
 Document supported formats/languages, data retention behavior, network endpoints, pricing risk, and quality limitations in the provider definition or extension documentation.
+
+
+## UI registration
+
+The Settings AI Provider page is registry-driven. When adding a provider, add the Rust provider definition and runtime adapter, then add the matching frontend UI registry entry so the Provider Selector, task-model mapping, capabilities, and settings panel are rendered from provider metadata rather than OpenAI-specific code.
+
+Use the Developer-diagnostics-only Test Provider Adapter to confirm that provider registration, task-model display, capability rendering, and settings-card rendering work as expected. It is UI-extension-test-only and fails closed with `ERR_TEST_PROVIDER_ADAPTER_UI_ONLY`; do not copy it as a runtime provider implementation.

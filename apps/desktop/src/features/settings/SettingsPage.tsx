@@ -1,5 +1,5 @@
 import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
-import type { ReactNode } from "react";
+import type { KeyboardEvent, ReactNode } from "react";
 import { Dialog } from "../../components/Dialog";
 import { ResetVaultDialog } from "../../components/ResetVaultDialog";
 import { Icon } from "../../components/Icon";
@@ -7,6 +7,14 @@ import type { IconName } from "../../components/Icon";
 import { t } from "../../i18n";
 import { api } from "../../shared/api";
 import { APP_VERSION } from "../../shared/appVersion";
+import { ENABLE_DEV_TOOLS } from "../../shared/buildFlags";
+import {
+  canUseAsDefaultProvider,
+  isUiOnlyProvider,
+  providerDescriptionKey,
+  providerSettingsPanelKind,
+  visibleProviderDefinitions,
+} from "../../shared/providerUiRegistry";
 import {
   InactivityLockMinutes,
   LANGUAGE_CODES,
@@ -18,6 +26,7 @@ import {
 } from "../../shared/languagePreferences";
 import type {
   LanguagePreferences,
+  MediaRuntimeStatus,
   ProviderConfigurationStatus,
   ProviderDefinition,
 } from "../../shared/types";
@@ -60,7 +69,7 @@ const settingsCategories: Array<{
   { id: "language", icon: "comparison" },
   { id: "provider", icon: "analyze" },
   { id: "security", icon: "shield" },
-  { id: "advanced", icon: "sort" },
+  ...(ENABLE_DEV_TOOLS ? [{ id: "advanced" as const, icon: "sort" as const }] : []),
   { id: "about", icon: "brand" },
 ];
 
@@ -93,16 +102,35 @@ function languageOptions() {
 }
 
 function providerStatusLabel(providerId: string, status: ProviderConfigurationStatus | undefined) {
+  if (isUiOnlyProvider(providerId)) {
+    return t("providers.status.ui_test_only");
+  }
+  if (providerId === "mock" && status?.configured) {
+    return t("providers.status.local_ready");
+  }
   if (providerId === "openai" && status?.maskedSummary === "ready") {
-    return t("providers.configuredShort");
+    return t("providers.status.saved_not_verified");
   }
   return t(`providers.status.${status?.maskedSummary ?? "not_configured"}`);
+}
+
+function providerStatusClass(
+  providerId: string,
+  status: ProviderConfigurationStatus | undefined,
+) {
+  if (isUiOnlyProvider(providerId)) return "statusWarning";
+  if (providerId === "mock" && status?.configured) return "statusGood";
+  if (providerId === "openai" && status?.configured) return "statusWarning";
+  if (status?.stored) return "statusWarning";
+  return "statusMuted";
 }
 
 function providerIsReady(
   providerId: string,
   statuses: ProviderConfigurationStatus[],
 ) {
+  if (!canUseAsDefaultProvider(providerId)) return false;
+  if (isUiOnlyProvider(providerId)) return ENABLE_DEV_TOOLS;
   return statuses.some(
     (status) => status.providerId === providerId && status.configured,
   );
@@ -121,6 +149,29 @@ function configuredModel(
   );
 }
 
+const OVERLAY_FONT_SIZE_MIN = 14;
+const OVERLAY_FONT_SIZE_MAX = 28;
+const OVERLAY_OPACITY_MIN = 60;
+const OVERLAY_OPACITY_MAX = 100;
+
+function clampInteger(value: number, min: number, max: number) {
+  if (!Number.isFinite(value)) return min;
+  return Math.min(max, Math.max(min, Math.round(value)));
+}
+
+function parseIntegerDraft(
+  value: string,
+  fallback: number,
+  min: number,
+  max: number,
+) {
+  const trimmed = value.trim();
+  if (!trimmed) return fallback;
+  const parsed = Number(trimmed);
+  if (!Number.isFinite(parsed)) return fallback;
+  return clampInteger(parsed, min, max);
+}
+
 export function SettingsPage({
   providers,
   providerStatuses,
@@ -135,6 +186,7 @@ export function SettingsPage({
 }: Props) {
   const [activeCategory, setActiveCategory] =
     useState<SettingsCategory>("general");
+  const [activeProviderId, setActiveProviderId] = useState(defaultProviderId || "openai");
   const [apiKey, setApiKey] = useState("");
   const [apiKeyVisible, setApiKeyVisible] = useState(false);
   const [baseUrl, setBaseUrl] = useState("https://api.openai.com/v1");
@@ -144,7 +196,9 @@ export function SettingsPage({
   const [analysisModel, setAnalysisModel] = useState("gpt-5-mini");
   const [mockScenario, setMockScenario] = useState("normal");
   const [overlayFontSize, setOverlayFontSize] = useState(18);
+  const [overlayFontSizeInput, setOverlayFontSizeInput] = useState("18");
   const [overlayOpacity, setOverlayOpacity] = useState(94);
+  const [overlayOpacityInput, setOverlayOpacityInput] = useState("94");
   const [feedback, setFeedback] = useState<SettingsFeedback | null>(null);
   const feedbackTimer = useRef<number | undefined>(undefined);
   const [providerBusy, setProviderBusy] = useState(false);
@@ -152,6 +206,8 @@ export function SettingsPage({
   const [removeProviderOpen, setRemoveProviderOpen] = useState(false);
   const [removeApiKeyOpen, setRemoveApiKeyOpen] = useState(false);
   const [resetOpen, setResetOpen] = useState(false);
+  const [mediaRuntime, setMediaRuntime] = useState<MediaRuntimeStatus | null>(null);
+  const [mediaRuntimeLoading, setMediaRuntimeLoading] = useState(false);
 
   const openAiDefinition = providers.find((value) => value.id === "openai");
   const mockDefinition = providers.find((value) => value.id === "mock");
@@ -187,6 +243,29 @@ export function SettingsPage({
     () => resolveLanguagePreferences(preferences),
     [preferences],
   );
+  const hasLegacyCustomOpenAiEndpoint =
+    baseUrl.trim().replace(/\/+$/, "") !== baseUrlDefault;
+  const visibleProviders = useMemo(
+    () => visibleProviderDefinitions(providers),
+    [providers],
+  );
+  const defaultProviderOptions = useMemo(
+    () => visibleProviders,
+    [visibleProviders],
+  );
+  const activeProvider = useMemo(() => {
+    return (
+      visibleProviders.find((provider) => provider.id === activeProviderId) ??
+      visibleProviders.find((provider) => provider.id === "openai") ??
+      visibleProviders[0]
+    );
+  }, [activeProviderId, visibleProviders]);
+  const activeProviderStatus = activeProvider
+    ? providerStatuses.find((value) => value.providerId === activeProvider.id)
+    : undefined;
+  const activeProviderPanelKind = activeProvider
+    ? providerSettingsPanelKind(activeProvider.id)
+    : "uiExtensionTest";
 
   function dismissFeedback() {
     if (feedbackTimer.current !== undefined) {
@@ -219,11 +298,33 @@ export function SettingsPage({
   }, []);
 
   useEffect(() => {
+    if (visibleProviders.length === 0) return;
+    if (!visibleProviders.some((provider) => provider.id === activeProviderId)) {
+      setActiveProviderId(
+        visibleProviders.find((provider) => provider.id === "openai")?.id ??
+          visibleProviders[0].id,
+      );
+    }
+  }, [activeProviderId, visibleProviders]);
+
+  useEffect(() => {
     void api
       .loadSettings()
       .then((settings) => {
-        setOverlayFontSize(Number(settings.overlayFontSize ?? 18));
-        setOverlayOpacity(Number(settings.overlayOpacity ?? 94));
+        const nextFontSize = clampInteger(
+          Number(settings.overlayFontSize ?? 18),
+          OVERLAY_FONT_SIZE_MIN,
+          OVERLAY_FONT_SIZE_MAX,
+        );
+        const nextOpacity = clampInteger(
+          Number(settings.overlayOpacity ?? 94),
+          OVERLAY_OPACITY_MIN,
+          OVERLAY_OPACITY_MAX,
+        );
+        setOverlayFontSize(nextFontSize);
+        setOverlayFontSizeInput(String(nextFontSize));
+        setOverlayOpacity(nextOpacity);
+        setOverlayOpacityInput(String(nextOpacity));
       })
       .catch((error) => onError(String(error)));
   }, [onError]);
@@ -257,6 +358,38 @@ export function SettingsPage({
     );
   }, [mockStatus?.configured, mockStatus?.updatedAt, mockScenarioDefault]);
 
+  useEffect(() => {
+    if (activeCategory !== "about" || mediaRuntime !== null || mediaRuntimeLoading) {
+      return;
+    }
+    setMediaRuntimeLoading(true);
+    void api
+      .mediaRuntimeStatus()
+      .then(setMediaRuntime)
+      .catch(() =>
+        setMediaRuntime({
+          available: false,
+          bundled: true,
+          mode: "unavailable",
+          target: "unknown",
+          expectedVersion: "8.1.2",
+          ffmpeg: {
+            available: false,
+            integrityVerified: false,
+            expectedSha256: "",
+            errorCode: "ERR_MEDIA_RUNTIME_UNAVAILABLE",
+          },
+          ffprobe: {
+            available: false,
+            integrityVerified: false,
+            expectedSha256: "",
+            errorCode: "ERR_MEDIA_RUNTIME_UNAVAILABLE",
+          },
+        }),
+      )
+      .finally(() => setMediaRuntimeLoading(false));
+  }, [activeCategory, mediaRuntime, mediaRuntimeLoading]);
+
   async function persistPreference(
     key: string,
     value: unknown,
@@ -277,6 +410,63 @@ export function SettingsPage({
     void persistPreference("languagePreferences", next);
   }
 
+  function updateOverlayFontSize(value: number, announce = false) {
+    const next = clampInteger(
+      value,
+      OVERLAY_FONT_SIZE_MIN,
+      OVERLAY_FONT_SIZE_MAX,
+    );
+    setOverlayFontSize(next);
+    setOverlayFontSizeInput(String(next));
+    void persistPreference("overlayFontSize", next, announce);
+  }
+
+  function updateOverlayOpacity(value: number, announce = false) {
+    const next = clampInteger(value, OVERLAY_OPACITY_MIN, OVERLAY_OPACITY_MAX);
+    setOverlayOpacity(next);
+    setOverlayOpacityInput(String(next));
+    void persistPreference("overlayOpacity", next, announce);
+  }
+
+  function commitOverlayFontSizeInput(announce = true) {
+    updateOverlayFontSize(
+      parseIntegerDraft(
+        overlayFontSizeInput,
+        overlayFontSize,
+        OVERLAY_FONT_SIZE_MIN,
+        OVERLAY_FONT_SIZE_MAX,
+      ),
+      announce,
+    );
+  }
+
+  function commitOverlayOpacityInput(announce = true) {
+    updateOverlayOpacity(
+      parseIntegerDraft(
+        overlayOpacityInput,
+        overlayOpacity,
+        OVERLAY_OPACITY_MIN,
+        OVERLAY_OPACITY_MAX,
+      ),
+      announce,
+    );
+  }
+
+  function handleOverlayNumberKeyDown(
+    event: KeyboardEvent<HTMLInputElement>,
+    commit: () => void,
+    reset: () => void,
+  ) {
+    if (event.key === "Enter") {
+      event.preventDefault();
+      commit();
+    }
+    if (event.key === "Escape") {
+      event.preventDefault();
+      reset();
+    }
+  }
+
   async function saveOpenAi(event: FormEvent) {
     event.preventDefault();
     if (providerBusy) return;
@@ -285,9 +475,9 @@ export function SettingsPage({
     try {
       await api.saveProviderCredentials("openai", {
         apiKey,
-        baseUrl,
-        transcriptionModel,
-        analysisModel,
+        baseUrl: baseUrlDefault,
+        transcriptionModel: transcriptionModelDefault,
+        analysisModel: analysisModelDefault,
       });
       setApiKey("");
       await onRefreshStatuses();
@@ -303,6 +493,7 @@ export function SettingsPage({
   }
 
   async function setDefaultProvider(providerId: string) {
+    if (!canUseAsDefaultProvider(providerId)) return;
     if (!providerIsReady(providerId, providerStatuses)) return;
     onDefaultProvider(providerId);
     await persistPreference("defaultProviderId", providerId);
@@ -310,8 +501,9 @@ export function SettingsPage({
 
   async function fallBackFromOpenAiDefault() {
     if (defaultProviderId !== "openai") return;
-    onDefaultProvider("mock");
-    await persistPreference("defaultProviderId", "mock", false);
+    const fallback = ENABLE_DEV_TOOLS ? "mock" : "openai";
+    onDefaultProvider(fallback);
+    await persistPreference("defaultProviderId", fallback, false);
   }
 
   async function removeOpenAiSecret() {
@@ -440,11 +632,16 @@ export function SettingsPage({
                     void setDefaultProvider(event.target.value)
                   }
                 >
-                  {providers.map((provider) => {
+                  {defaultProviderOptions.map((provider) => {
                     const ready = providerIsReady(
                       provider.id,
                       providerStatuses,
                     );
+                    const suffix = isUiOnlyProvider(provider.id)
+                      ? t("providers.uiExtensionTestOnly")
+                      : !ready
+                        ? t("providers.notReady")
+                        : "";
                     return (
                       <option
                         value={provider.id}
@@ -452,7 +649,7 @@ export function SettingsPage({
                         disabled={!ready}
                       >
                         {t(provider.displayNameKey)}
-                        {!ready ? ` — ${t("providers.notReady")}` : ""}
+                        {suffix ? ` — ${suffix}` : ""}
                       </option>
                     );
                   })}
@@ -504,19 +701,42 @@ export function SettingsPage({
                   value: overlayFontSize,
                 })}
               >
-                <input
-                  type="range"
-                  min="14"
-                  max="28"
-                  value={overlayFontSize}
-                  onChange={(event) => {
-                    const value = Number(event.target.value);
-                    setOverlayFontSize(value);
-                    void persistPreference("overlayFontSize", value, false);
-                  }}
-                  onPointerUp={() => showFeedback(t("settings.savedFeedback"))}
-                  onKeyUp={() => showFeedback(t("settings.savedFeedback"))}
-                />
+                <div className="rangeNumberControl">
+                  <input
+                    type="range"
+                    min={OVERLAY_FONT_SIZE_MIN}
+                    max={OVERLAY_FONT_SIZE_MAX}
+                    value={overlayFontSize}
+                    onChange={(event) =>
+                      updateOverlayFontSize(Number(event.target.value), false)
+                    }
+                    onPointerUp={() => showFeedback(t("settings.savedFeedback"))}
+                    onKeyUp={() => showFeedback(t("settings.savedFeedback"))}
+                    aria-label={t("settings.overlayFontSize")}
+                  />
+                  <label className="numberUnitInput">
+                    <input
+                      type="number"
+                      min={OVERLAY_FONT_SIZE_MIN}
+                      max={OVERLAY_FONT_SIZE_MAX}
+                      step="1"
+                      value={overlayFontSizeInput}
+                      onChange={(event) =>
+                        setOverlayFontSizeInput(event.target.value)
+                      }
+                      onBlur={() => commitOverlayFontSizeInput(true)}
+                      onKeyDown={(event) =>
+                        handleOverlayNumberKeyDown(
+                          event,
+                          () => commitOverlayFontSizeInput(true),
+                          () => setOverlayFontSizeInput(String(overlayFontSize)),
+                        )
+                      }
+                      aria-label={t("settings.overlayFontSize")}
+                    />
+                    <span>{t("settings.units.px")}</span>
+                  </label>
+                </div>
               </SettingRow>
               <SettingRow
                 label={t("settings.overlayTransparency")}
@@ -524,19 +744,42 @@ export function SettingsPage({
                   value: overlayOpacity,
                 })}
               >
-                <input
-                  type="range"
-                  min="60"
-                  max="100"
-                  value={overlayOpacity}
-                  onChange={(event) => {
-                    const value = Number(event.target.value);
-                    setOverlayOpacity(value);
-                    void persistPreference("overlayOpacity", value, false);
-                  }}
-                  onPointerUp={() => showFeedback(t("settings.savedFeedback"))}
-                  onKeyUp={() => showFeedback(t("settings.savedFeedback"))}
-                />
+                <div className="rangeNumberControl">
+                  <input
+                    type="range"
+                    min={OVERLAY_OPACITY_MIN}
+                    max={OVERLAY_OPACITY_MAX}
+                    value={overlayOpacity}
+                    onChange={(event) =>
+                      updateOverlayOpacity(Number(event.target.value), false)
+                    }
+                    onPointerUp={() => showFeedback(t("settings.savedFeedback"))}
+                    onKeyUp={() => showFeedback(t("settings.savedFeedback"))}
+                    aria-label={t("settings.overlayTransparency")}
+                  />
+                  <label className="numberUnitInput">
+                    <input
+                      type="number"
+                      min={OVERLAY_OPACITY_MIN}
+                      max={OVERLAY_OPACITY_MAX}
+                      step="1"
+                      value={overlayOpacityInput}
+                      onChange={(event) =>
+                        setOverlayOpacityInput(event.target.value)
+                      }
+                      onBlur={() => commitOverlayOpacityInput(true)}
+                      onKeyDown={(event) =>
+                        handleOverlayNumberKeyDown(
+                          event,
+                          () => commitOverlayOpacityInput(true),
+                          () => setOverlayOpacityInput(String(overlayOpacity)),
+                        )
+                      }
+                      aria-label={t("settings.overlayTransparency")}
+                    />
+                    <span>{t("settings.units.percent")}</span>
+                  </label>
+                </div>
               </SettingRow>
             </SettingsSection>
           )}
@@ -692,12 +935,31 @@ export function SettingsPage({
               title={t("providers.title")}
               description={t("providers.realApiOptional")}
             >
+              <SettingRow
+                label={t("providers.activeProvider")}
+                description={t("providers.activeProviderDescription")}
+              >
+                <select
+                  value={activeProvider?.id ?? ""}
+                  onChange={(event) => setActiveProviderId(event.target.value)}
+                >
+                  {visibleProviders.map((provider) => (
+                    <option value={provider.id} key={provider.id}>
+                      {t(provider.displayNameKey)}
+                    </option>
+                  ))}
+                </select>
+              </SettingRow>
+
               <div className="providerOverviewGrid">
-                {providers.map((provider) => {
+                {visibleProviders.map((provider) => {
                   const status = providerStatuses.find(
                     (value) => value.providerId === provider.id,
                   );
                   const isDefault = defaultProviderId === provider.id;
+                  const canBeDefault = canUseAsDefaultProvider(provider.id);
+                  const canSetDefault =
+                    canBeDefault && (status?.configured || isUiOnlyProvider(provider.id));
                   return (
                     <article className="providerOverviewCard" key={provider.id}>
                       <div className="providerOverviewHeader">
@@ -706,22 +968,12 @@ export function SettingsPage({
                           <strong>{t(provider.displayNameKey)}</strong>
                         </span>
                         <span
-                          className={
-                            status?.configured
-                              ? "statusGood"
-                              : status?.stored
-                                ? "statusWarning"
-                                : "statusMuted"
-                          }
+                          className={providerStatusClass(provider.id, status)}
                         >
                           {providerStatusLabel(provider.id, status)}
                         </span>
                       </div>
-                      <p>
-                        {provider.id === "mock"
-                          ? t("providers.mockDescription")
-                          : t("providers.openAiDescription")}
-                      </p>
+                      <p>{t(providerDescriptionKey(provider.id))}</p>
                       <div className="providerOverviewActions">
                         {isDefault ? (
                           <span className="defaultProviderBadge">
@@ -731,7 +983,7 @@ export function SettingsPage({
                           <button
                             type="button"
                             className="secondaryButton"
-                            disabled={!status?.configured}
+                            disabled={!canSetDefault}
                             onClick={() => void setDefaultProvider(provider.id)}
                           >
                             {t("providers.setAsDefault")}
@@ -743,210 +995,182 @@ export function SettingsPage({
                 })}
               </div>
 
-              <form className="providerSettingsCard" onSubmit={saveOpenAi}>
-                <div className="providerCardHeader">
-                  <div>
-                    <span className="providerIdentity">
-                      <Icon name="analyze" size={18} />
-                      <strong>{t("providers.openai.displayName")}</strong>
+              {activeProvider && activeProviderPanelKind === "openaiApiKey" && (
+                <form className="providerSettingsCard" onSubmit={saveOpenAi}>
+                  <div className="providerCardHeader">
+                    <div>
+                      <span className="providerIdentity">
+                        <Icon name="analyze" size={18} />
+                        <strong>{t(activeProvider.displayNameKey)}</strong>
+                      </span>
+                      <p>{t(providerDescriptionKey(activeProvider.id))}</p>
+                    </div>
+                    <span
+                      className={providerStatusClass(activeProvider.id, activeProviderStatus)}
+                    >
+                      {providerStatusLabel(activeProvider.id, activeProviderStatus)}
                     </span>
-                    <p>{t("providers.openAiDescription")}</p>
                   </div>
-                  <span
-                    className={
-                      openAiStatus?.configured
-                        ? "statusGood"
-                        : openAiStatus?.stored
-                          ? "statusWarning"
-                          : "statusMuted"
-                    }
-                  >
-                    {providerStatusLabel("openai", openAiStatus)}
-                  </span>
-                </div>
-                {api.isNative ? (
-                  <>
-                    <section className="providerCredentialPanel">
-                      <div className="providerCredentialHeader">
-                        <div>
-                          <h3>{t("providers.apiKeyTitle")}</h3>
-                          <p>{t("providers.apiKeySecurityDescription")}</p>
-                        </div>
-                        <span
-                          className={openAiKeySaved ? "statusGood" : "statusMuted"}
-                        >
-                          {openAiKeySaved
-                            ? t("providers.apiKeySaved")
-                            : t("providers.apiKeyMissing")}
-                        </span>
-                      </div>
-                      {openAiKeySaved && (
-                        <div className="savedSecretSummary" aria-label={t("providers.apiKeySaved")}>
-                          <span className="savedSecretMask" aria-hidden="true">
-                            ••••••••••••
+                  {api.isNative ? (
+                    <>
+                      <section className="providerCredentialPanel">
+                        <div className="providerCredentialHeader">
+                          <div>
+                            <h3>{t("providers.apiKeyTitle")}</h3>
+                            <p>{t("providers.apiKeySecurityDescription")}</p>
+                          </div>
+                          <span
+                            className={openAiKeySaved ? "statusGood" : "statusMuted"}
+                          >
+                            {openAiKeySaved
+                              ? t("providers.apiKeySaved")
+                              : t("providers.apiKeyMissing")}
                           </span>
-                          <span>{t("providers.savedSecretNeverShown")}</span>
                         </div>
-                      )}
-                      <SettingField
-                        label={
-                          openAiKeySaved
-                            ? t("providers.replaceApiKey")
-                            : t("providers.fields.apiKey")
-                        }
-                      >
-                        <div className="secretInputRow">
-                          <input
-                            type={apiKeyVisible ? "text" : "password"}
-                            autoComplete="new-password"
-                            spellCheck={false}
-                            value={apiKey}
-                            placeholder={
-                              openAiKeySaved
-                                ? t("providers.apiKeyRetained")
-                                : t("providers.apiKeyPlaceholder")
-                            }
-                            onChange={(event) => setApiKey(event.target.value)}
-                          />
+                        {openAiKeySaved && (
+                          <div className="savedSecretSummary" aria-label={t("providers.apiKeySaved")}>
+                            <span className="savedSecretMask" aria-hidden="true">
+                              ••••••••••••
+                            </span>
+                            <span>{t("providers.savedSecretNeverShown")}</span>
+                          </div>
+                        )}
+                        <SettingField
+                          label={
+                            openAiKeySaved
+                              ? t("providers.replaceApiKey")
+                              : t("providers.fields.apiKey")
+                          }
+                        >
+                          <div className="secretInputRow">
+                            <input
+                              type={apiKeyVisible ? "text" : "password"}
+                              autoComplete="new-password"
+                              spellCheck={false}
+                              value={apiKey}
+                              placeholder={
+                                openAiKeySaved
+                                  ? t("providers.apiKeyRetained")
+                                  : t("providers.apiKeyPlaceholder")
+                              }
+                              onChange={(event) => setApiKey(event.target.value)}
+                            />
+                            <button
+                              type="button"
+                              className="secondaryButton secretVisibilityButton"
+                              disabled={!apiKey}
+                              aria-pressed={apiKeyVisible}
+                              onClick={() => setApiKeyVisible((value) => !value)}
+                            >
+                              {apiKeyVisible
+                                ? t("providers.hideEnteredKey")
+                                : t("providers.showEnteredKey")}
+                            </button>
+                          </div>
+                          <span className="fieldHint">
+                            {openAiKeySaved
+                              ? t("providers.apiKeyReplaceHint")
+                              : t("providers.apiKeyAddHint")}
+                          </span>
+                        </SettingField>
+                        {openAiKeySaved && (
                           <button
                             type="button"
-                            className="secondaryButton secretVisibilityButton"
-                            disabled={!apiKey}
-                            aria-pressed={apiKeyVisible}
-                            onClick={() => setApiKeyVisible((value) => !value)}
-                          >
-                            {apiKeyVisible
-                              ? t("providers.hideEnteredKey")
-                              : t("providers.showEnteredKey")}
-                          </button>
-                        </div>
-                        <span className="fieldHint">
-                          {openAiKeySaved
-                            ? t("providers.apiKeyReplaceHint")
-                            : t("providers.apiKeyAddHint")}
-                        </span>
-                      </SettingField>
-                      {openAiKeySaved && (
-                        <button
-                          type="button"
-                          className="dangerLinkButton"
-                          disabled={providerBusy}
-                          onClick={() => setRemoveApiKeyOpen(true)}
-                        >
-                          {t("providers.deleteApiKey")}
-                        </button>
-                      )}
-                    </section>
-
-                    <div className="settingsFormGrid providerFormGrid">
-                      <SettingField label={t("providers.fields.baseUrl")}>
-                        <input
-                          value={baseUrl}
-                          onChange={(event) => setBaseUrl(event.target.value)}
-                          required
-                        />
-                      </SettingField>
-                      <SettingField
-                        label={t("providers.fields.transcriptionModel")}
-                      >
-                        <input
-                          value={transcriptionModel}
-                          onChange={(event) =>
-                            setTranscriptionModel(event.target.value)
-                          }
-                          required
-                        />
-                      </SettingField>
-                      <SettingField label={t("providers.fields.analysisModel")}>
-                        <input
-                          value={analysisModel}
-                          onChange={(event) =>
-                            setAnalysisModel(event.target.value)
-                          }
-                          required
-                        />
-                      </SettingField>
-                      <div className="settingsFormActions">
-                        <button
-                          className="primaryButton"
-                          disabled={providerBusy || (!openAiKeySaved && !apiKey.trim())}
-                        >
-                          {providerBusy
-                            ? t("common.saving")
-                            : openAiKeySaved && apiKey.trim()
-                              ? t("providers.replaceKeyAndSave")
-                              : t("providers.saveProvider")}
-                        </button>
-                        {openAiStatus?.stored && (
-                          <button
-                            type="button"
-                            className="dangerButton"
+                            className="dangerLinkButton"
                             disabled={providerBusy}
-                            onClick={() => setRemoveProviderOpen(true)}
+                            onClick={() => setRemoveApiKeyOpen(true)}
                           >
-                            {t("providers.removeConfiguration")}
+                            {t("providers.deleteApiKey")}
                           </button>
                         )}
-                      </div>
-                    </div>
-
-                    {openAiDefinition && (
-                      <section className="modelAssignmentSection">
-                        <div className="settingsSubheader">
-                          <h3>{t("providers.modelAssignments")}</h3>
-                          <p>{t("providers.modelAssignmentsDescription")}</p>
-                        </div>
-                        <div className="modelAssignmentGrid">
-                          {openAiDefinition.modelAssignments.map((assignment) => (
-                            <div className="modelAssignmentRow" key={assignment.capability}>
-                              <span>
-                                {t(`providers.capabilityLabels.${assignment.capability}`)}
-                              </span>
-                              <strong>
-                                {configuredModel(
-                                  openAiDefinition,
-                                  openAiStatus,
-                                  assignment.configurationFieldId,
-                                )}
-                              </strong>
-                            </div>
-                          ))}
-                        </div>
                       </section>
-                    )}
-                  </>
-                ) : (
-                  <div className="notice">
-                    {t("providers.desktopOnlyCredentials")}
-                  </div>
-                )}
-              </form>
 
-              <section className="providerCapabilitySection">
-                <div className="settingsSubheader">
-                  <h3>{t("providers.capabilities")}</h3>
-                  <p>{t("providers.capabilitiesDescription")}</p>
-                </div>
-                {providers.map((provider) => (
-                  <details key={provider.id}>
-                    <summary>{t(provider.displayNameKey)}</summary>
-                    <div className="capGrid">
-                      {Object.entries(provider.capabilities)
-                        .filter(([, value]) => typeof value === "boolean")
-                        .map(([key, value]) => (
-                          <span
-                            className={value ? "capabilityAvailable" : ""}
-                            key={key}
+                      <div className="providerManagedConfiguration">
+                        <div className="settingsInfoCard settingsInfoCard-wide">
+                          <Icon name="shield" size={18} />
+                          <div>
+                            <strong>{t("providers.officialEndpointTitle")}</strong>
+                            <p>{t("providers.officialEndpointDescription")}</p>
+                          </div>
+                        </div>
+                        {hasLegacyCustomOpenAiEndpoint && (
+                          <div className="notice">
+                            {t("providers.legacyCustomEndpointNotice")}
+                          </div>
+                        )}
+                        <div className="settingsFormActions">
+                          <button
+                            className="primaryButton"
+                            disabled={providerBusy || (!openAiKeySaved && !apiKey.trim())}
                           >
-                            {t(`providers.capabilityLabels.${key}`)}: {value
-                              ? t("providers.available")
-                              : t("providers.unavailable")}
-                          </span>
-                        ))}
+                            {providerBusy
+                              ? t("common.saving")
+                              : openAiKeySaved && apiKey.trim()
+                                ? t("providers.replaceKeyAndSave")
+                                : t("providers.saveProvider")}
+                          </button>
+                          {openAiStatus?.stored && (
+                            <button
+                              type="button"
+                              className="dangerButton"
+                              disabled={providerBusy}
+                              onClick={() => setRemoveProviderOpen(true)}
+                            >
+                              {t("providers.removeConfiguration")}
+                            </button>
+                          )}
+                        </div>
+                      </div>
+
+                      <ProviderModelAssignments
+                        provider={activeProvider}
+                        status={activeProviderStatus}
+                      />
+                    </>
+                  ) : (
+                    <div className="notice">
+                      {t("providers.desktopOnlyCredentials")}
                     </div>
-                  </details>
-                ))}
-              </section>
+                  )}
+                </form>
+              )}
+
+              {activeProvider && activeProviderPanelKind !== "openaiApiKey" && (
+                <article className="providerSettingsCard">
+                  <div className="providerCardHeader">
+                    <div>
+                      <span className="providerIdentity">
+                        <Icon name="analyze" size={18} />
+                        <strong>{t(activeProvider.displayNameKey)}</strong>
+                      </span>
+                      <p>{t(providerDescriptionKey(activeProvider.id))}</p>
+                    </div>
+                    <span
+                      className={providerStatusClass(activeProvider.id, activeProviderStatus)}
+                    >
+                      {providerStatusLabel(activeProvider.id, activeProviderStatus)}
+                    </span>
+                  </div>
+                  {activeProviderPanelKind === "developerDiagnostics" && (
+                    <div className="notice">
+                      {t("providers.mockDeveloperOnlyNotice")}
+                    </div>
+                  )}
+                  {activeProviderPanelKind === "uiExtensionTest" && (
+                    <div className="notice">
+                      {t("providers.testAdapter.uiOnlyNotice")}
+                    </div>
+                  )}
+                  <ProviderModelAssignments
+                    provider={activeProvider}
+                    status={activeProviderStatus}
+                  />
+                </article>
+              )}
+
+              {activeProvider && (
+                <ProviderCapabilitySection provider={activeProvider} />
+              )}
             </SettingsSection>
           )}
 
@@ -979,7 +1203,7 @@ export function SettingsPage({
             </SettingsSection>
           )}
 
-          {activeCategory === "advanced" && (
+          {ENABLE_DEV_TOOLS && activeCategory === "advanced" && (
             <SettingsSection
               title={t("settings.advancedTitle")}
               description={t("settings.advancedDescription")}
@@ -1053,6 +1277,24 @@ export function SettingsPage({
                 <div>
                   <strong>{t("settings.localFirstTitle")}</strong>
                   <p>{t("settings.localFirstDescription")}</p>
+                </div>
+              </div>
+              <div className="settingsInfoCard settingsInfoCard-wide">
+                <Icon name="media" size={19} />
+                <div>
+                  <strong>{t("settings.mediaRuntimeTitle")}</strong>
+                  <p>
+                    {mediaRuntimeLoading || mediaRuntime === null
+                      ? t("settings.mediaRuntimeChecking")
+                      : mediaRuntime.available
+                        ? t("settings.mediaRuntimeReady", {
+                            version: mediaRuntime.expectedVersion,
+                            target: mediaRuntime.target,
+                          })
+                        : t("settings.mediaRuntimeUnavailable", {
+                            version: mediaRuntime.expectedVersion,
+                          })}
+                  </p>
                 </div>
               </div>
             </SettingsSection>
@@ -1148,6 +1390,63 @@ function SettingsSection({
         <p>{description}</p>
       </header>
       <div className="settingsSectionBody">{children}</div>
+    </section>
+  );
+}
+
+function ProviderModelAssignments({
+  provider,
+  status,
+}: {
+  provider: ProviderDefinition;
+  status: ProviderConfigurationStatus | undefined;
+}) {
+  if (provider.modelAssignments.length === 0) return null;
+  return (
+    <section className="modelAssignmentSection">
+      <div className="settingsSubheader">
+        <h3>{t("providers.modelAssignments")}</h3>
+        <p>{t("providers.modelAssignmentsDescription")}</p>
+      </div>
+      <div className="modelAssignmentGrid">
+        {provider.modelAssignments.map((assignment) => (
+          <div className="modelAssignmentRow" key={assignment.capability}>
+            <span>{t(`providers.capabilityLabels.${assignment.capability}`)}</span>
+            <strong>
+              {configuredModel(
+                provider,
+                status,
+                assignment.configurationFieldId,
+              )}
+            </strong>
+          </div>
+        ))}
+      </div>
+    </section>
+  );
+}
+
+function ProviderCapabilitySection({ provider }: { provider: ProviderDefinition }) {
+  return (
+    <section className="providerCapabilitySection">
+      <div className="settingsSubheader">
+        <h3>{t("providers.capabilities")}</h3>
+        <p>{t("providers.capabilitiesDescription")}</p>
+      </div>
+      <details open>
+        <summary>{t(provider.displayNameKey)}</summary>
+        <div className="capGrid">
+          {Object.entries(provider.capabilities)
+            .filter(([, value]) => typeof value === "boolean")
+            .map(([key, value]) => (
+              <span className={value ? "capabilityAvailable" : ""} key={key}>
+                {t(`providers.capabilityLabels.${key}`)}: {value
+                  ? t("providers.available")
+                  : t("providers.unavailable")}
+              </span>
+            ))}
+        </div>
+      </details>
     </section>
   );
 }
