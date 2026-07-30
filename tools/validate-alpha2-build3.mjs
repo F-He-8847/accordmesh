@@ -53,6 +53,12 @@ const releaseChecklist = read("docs/RELEASE_CHECKLIST.md");
 const exportRs = read("apps/desktop/src-tauri/src/export/mod.rs");
 const contractTests = read("apps/desktop/src-tauri/src/public_contract_tests.rs");
 const tauri = JSON.parse(read("apps/desktop/src-tauri/tauri.conf.json"));
+const rootPackage = JSON.parse(read("package.json"));
+const internalBuildByReleaseVersion = {
+  "0.1.0-alpha.2": "3",
+  "0.1.0-alpha.3": "4",
+};
+const expectedInternalBuild = internalBuildByReleaseVersion[rootPackage.version];
 
 check("P0-01A", audio.includes("SoundCheckControl") && audio.includes("cancel_and_wait"), "Sound Check has an owned cancellable runtime");
 check("P0-01B", lib.includes("cancel_sound_check") && lib.includes("stop_active_sound_check"), "Lock/window shutdown can wait for microphone release");
@@ -163,7 +169,12 @@ check("UIP-10", providersI18n.includes("Test Provider Adapter") && providersI18n
 check("UIP-11", readme.includes("Adding a Provider Adapter") && includes("docs/PROVIDER_EXTENSION_GUIDE.md", "UI registration") && includes("docs/AI_PROVIDER_ARCHITECTURE.md", "Test Provider Adapter"), "Provider Adapter extension and UI-only test adapter are documented");
 
 check("BUILD-01", tauri.version === "0.1.0", "CFBundleShortVersionString source remains 0.1.0");
-check("BUILD-02", tauri.bundle?.macOS?.bundleVersion === "3", "Internal macOS build number is 3");
+check(
+  "BUILD-02",
+  expectedInternalBuild !== undefined &&
+    tauri.bundle?.macOS?.bundleVersion === expectedInternalBuild,
+  `Internal macOS build number matches ${rootPackage.version} (${expectedInternalBuild ?? "unsupported"})`,
+);
 check("BUILD-03", tauri.app?.windows?.[0]?.minWidth === 1024 && tauri.app?.windows?.[0]?.minHeight === 700, "Minimum window contract is 1024 × 700");
 check("SAFE-01", !openai.includes("store=true"), "No opt-in OpenAI response storage was introduced");
 check("SAFE-02", includes("apps/desktop/src-tauri/tauri.macos.conf.json", '"externalBin"'), "Bundled media sidecars remain declared");
